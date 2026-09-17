@@ -27,10 +27,13 @@ from utils.run_config import RunConfig
 NAME_PENALTY = -10.0
 
 
-def apply_name_penalty(result: Dict[str, Any]) -> None:
+def apply_name_penalty(result: Dict[str, Any], enabled: bool = True) -> None:
     """Old data_clean rule: an utterance mixing both names (or repeating one
     name) marks a broken format and subtracts 10 from the reward."""
     penalty = 0.0
+    if not enabled:
+        result["name_penalty"] = penalty
+        return
     for sentence in result.get("conversation", []):
         try:
             text = str(sentence)
@@ -67,7 +70,7 @@ def select_trajectories(cfg: RunConfig, iteration: int) -> List[Dict[str, Any]]:
     for task in tasks:
         results = task["results"]
         for result in results:
-            apply_name_penalty(result)
+            apply_name_penalty(result, enabled=cfg.require_name_prefix)
             if result.get("reward") is None:
                 result["reward"] = 0.0
         effective = [

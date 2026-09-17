@@ -1,7 +1,7 @@
 """In-process reward scoring for the Qwen OPTIMA pipeline (no Ray, no deploys).
 
 Replicates the scoring rules of the old ``reward/deploy_reward.py`` path
-(``get_score_deploy``) with one frozen Qwen-0.5B model held locally:
+(``get_score_deploy``) with one frozen configured base model held locally:
 
     R = R_task - lambda_token * (tokens / max_tokens_in_task) + lambda_loss / max_per_turn_loss
 
@@ -9,8 +9,8 @@ Special rules carried over from the old code:
 - token_count <= 40          -> token_score = -1
 - "large" in conversation    -> token_score = -1
 - token_count > 2000 or empty conversation -> ppl_score = -1
-- duplicated utterance (after stripping name prefixes) -> ppl_score = 0
-- one utterance containing both names, or the same name twice, -> correct_score = 0
+- duplicated utterance (after optional name-prefix normalization) -> ppl_score = 0
+- when name prefixes are required, mixing/repeating names -> correct_score = 0
 """
 from typing import Any, Dict, List, Optional, Tuple
 import json
@@ -100,7 +100,11 @@ def _correct_score(result: Dict[str, Any], tokenizer, score_type: str) -> float:
         return 0.0
 
 
-def _utterance_penalties(conversation: List[str], result: Dict[str, Any]) -> bool:
+def _utterance_penalties(
+    conversation: List[str],
+    result: Dict[str, Any],
+    check_name_format: bool = True,
+) -> bool:
     """Broken-format checks from the old get_score_deploy. Returns True when
     the utterance list is sane (no name-mix / no duplication)."""
     record: List[str] = []
@@ -109,17 +113,20 @@ def _utterance_penalties(conversation: List[str], result: Dict[str, Any]) -> boo
             text = str(sentence)
         except Exception:
             continue
-        if re.search(r"Alice:", text) and re.search(r"Bob:", text):
-            result["correct_score"] = 0.0
-            return False
-        if len(re.findall(r"Alice:", text)) >= 2 or len(re.findall(r"Bob:", text)) >= 2:
-            result["correct_score"] = 0.0
-            return False
-        stripped = text.strip().strip("Alice:").strip("Bob:").lower()
-        if stripped in record:
+        if check_name_format:
+            if re.search(r"Alice:", text) and re.search(r"Bob:", text):
+                result["correct_score"] = 0.0
+                return False
+            if len(re.findall(r"Alice:", text)) >= 2 or len(re.findall(r"Bob:", text)) >= 2:
+                result["correct_score"] = 0.0
+                return False
+            normalized = re.sub(r"^\s*(Alice|Bob)\s*:\s*", "", text).strip().lower()
+        else:
+            normalized = text.strip().lower()
+        if normalized in record:
             result["ppl_score"] = 0.0
             return False
-        record.append(stripped)
+        record.append(normalized)
     return True
 
 
@@ -131,6 +138,7 @@ def score_task(
     lambda2: float,
     score_type: str = "f1-score",
     cal_ppl: bool = True,
+    check_name_format: bool = True,
 ) -> Dict[str, Any]:
     tokenizer = loss_scorer.tokenizer
     conversation = [c for c in result.get("conversation", []) if c != "large"]
@@ -150,7 +158,9 @@ def score_task(
     if cal_ppl:
         if result.get("token_count", 0) > 2000 or len(conversation) == 0:
             result["ppl_score"] = -1.0
-        elif _utterance_penalties(conversation, result) and conversation:
+        elif _utterance_penalties(
+            conversation, result, check_name_format=check_name_format
+        ) and conversation:
             losses = loss_scorer.per_turn_losses(conversation)
             max_loss = max(losses) if losses else 1.0
             result["ppl_score"] = lambda2 / max_loss
@@ -203,6 +213,7 @@ def score_all(cfg: RunConfig, iteration: int) -> int:
                 cfg.lambda2,
                 score_type=score_type,
                 cal_ppl=cfg.cal_ppl,
+                check_name_format=cfg.require_name_prefix,
             )
         rows.append(task)
 

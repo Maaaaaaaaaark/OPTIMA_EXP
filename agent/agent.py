@@ -89,6 +89,7 @@ class VllmAgent(BaseAgent):
         temperature: float,
         max_tokens: int = 2000,
         seed_provider: Optional[Callable[[], Optional[int]]] = None,
+        use_name_prefix: bool = True,
     ):
         self.url = url
         self.prompt_template = ""
@@ -100,6 +101,7 @@ class VllmAgent(BaseAgent):
         self.max_tokens = max_tokens
         # deterministic sampling: returns a per-request seed or None
         self.seed_provider = seed_provider
+        self.use_name_prefix = use_name_prefix
 
     def init_system_prompt(self, template: str, args: dict):
         self.system_prompt.content = Template(template).safe_substitute(args)
@@ -129,7 +131,8 @@ class VllmAgent(BaseAgent):
             seed = self.seed_provider()
             if seed is not None:
                 data_json["seed"] = seed
-        if not is_iteration_0:
+        use_prefill = self.use_name_prefix and not is_iteration_0
+        if use_prefill:
             # prefill the assistant turn with the name prefix and ask vLLM
             # to continue exactly that final message instead of starting a
             # fresh assistant turn.
@@ -155,7 +158,7 @@ class VllmAgent(BaseAgent):
         choice = payload["choices"][0]
         content: str = choice["message"]["content"]
         finish_reason = choice.get("finish_reason", "") or ""
-        if not is_iteration_0 and not content.startswith(self.name):
+        if use_prefill and not content.startswith(self.name):
             # prefill part is not echoed back; restore the name prefix
             content = f"{self.name}:{content}"
         token_count = 0

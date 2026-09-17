@@ -275,6 +275,11 @@ def check_format(cfg, flat, rep):
     pref_rate = pref_ok / total_turns if total_turns else 0.0
     if total_turns == 0:
         rep.fail("轨迹中没有任何发言")
+    elif not cfg.require_name_prefix:
+        rep.ok(
+            "已关闭文本名字前缀要求；speaker 元数据负责角色归属",
+            f"自然产生名字前缀: {pref_ok}/{total_turns} ({pref_rate:.1%})，不参与验收",
+        )
     elif pref_rate >= 0.99:
         rep.ok(f"发言带名字前缀: {pref_ok}/{total_turns} ({pref_rate:.1%})")
     elif pref_rate >= 0.9:
@@ -296,7 +301,9 @@ def check_format(cfg, flat, rep):
     else:
         rep.fail(f"仅 {ans_rate:.1%} 的轨迹解析出 <A> 答案（{no_answer}/{n} 无答案）")
 
-    if name_mixed == 0:
+    if not cfg.require_name_prefix:
+        rep.info("no-name-prefix 模式不应用 Alice/Bob 名字混用惩罚")
+    elif name_mixed == 0:
         rep.ok("没有单条发言同时混用 Alice/Bob 名字")
     else:
         rep.warn(f"{name_mixed}/{n} 条轨迹存在名字混用（会被 -10 惩罚）")

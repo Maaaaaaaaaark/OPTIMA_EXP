@@ -65,6 +65,7 @@ class RunConfig:
     cal_ppl: bool = True
     from_initial: bool = True      # debate: restart from base every iteration
     prompt_pool_path: str = ""     # format-diversity pool used at iteration 0
+    require_name_prefix: bool = True  # require/generated text to start with Alice:/Bob:
     temperature_iter0: float = 0.3
     temperature: float = 0.7
     selection_trim_low: float = 0.0   # paper: top-70% -> (0.0, 0.7)

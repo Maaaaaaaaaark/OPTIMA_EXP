@@ -34,6 +34,21 @@ _lock = threading.Lock()
 NAME_SUFFIX = '\n 3. You must begin your response with "${name}:".'
 
 
+def _remove_name_prefix_instruction(text: str) -> str:
+    """Remove display-only speaker-prefix instructions for the no-prefix
+    ablation. Speaker identity remains available in Turn.speaker and chat
+    roles, so routing and transcript attribution are unaffected."""
+    patterns = (
+        r'^\s*\d+\.\s*You must begin your response with ["\\]*\$\{name\}:["\\]*\.\s*$',
+        r'^\s*\d+\.\s*You should start your utterance with ["\\]*\$\{name\}:["\\]*\.\s*$',
+    )
+    lines = text.splitlines()
+    return "\n".join(
+        line for line in lines
+        if not any(re.match(pattern, line) for pattern in patterns)
+    )
+
+
 @dataclass
 class TaskSample:
     task_id: int
@@ -166,7 +181,10 @@ def _prepare_prompts(
         if iteration == 0 and cfg.prompt_pool_path:
             pool = get_prompt_pool(cfg.prompt_pool_path)
         if pool:
-            return rng.choice(pool), second_prompt
+            first_prompt = rng.choice(pool)
+        if not cfg.require_name_prefix:
+            first_prompt = _remove_name_prefix_instruction(first_prompt)
+            second_prompt = _remove_name_prefix_instruction(second_prompt)
         return first_prompt, second_prompt
 
     template = prompt
@@ -174,6 +192,8 @@ def _prepare_prompts(
         pool = get_prompt_pool(cfg.prompt_pool_path)
         if pool:
             template = rng.choice(pool)
+    if not cfg.require_name_prefix:
+        template = _remove_name_prefix_instruction(template)
     return template, template
 
 
@@ -202,6 +222,7 @@ def generate_trajectory(
         temperature=temperature,
         max_tokens=cfg.max_tokens_per_turn,
         seed_provider=seed_provider,
+        use_name_prefix=cfg.require_name_prefix,
     )
     agent_second = VllmAgent(
         url=cfg.bob.url,
@@ -210,6 +231,7 @@ def generate_trajectory(
         temperature=temperature,
         max_tokens=cfg.max_tokens_per_turn,
         seed_provider=seed_provider,
+        use_name_prefix=cfg.require_name_prefix,
     )
     agent_first.init_system_prompt(
         first_template,
