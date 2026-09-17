@@ -1,0 +1,53 @@
+# OPTIMA iSFT on Qwen2.5-0.5B-Instruct -- Information Exchange (HotpotQA)
+seed: 42
+run_name: qwen0.5b-hotpotqa-isft
+dataset_type: hotpot_qa
+dataset_path: hotpotqa
+dataset_split: train
+base_model_path: Qwen/Qwen2.5-0.5B-Instruct
+
+alice:
+  name: Alice
+  served_model_name: alice
+  url: http://127.0.0.1:8100/v1/chat/completions
+bob:
+  name: Bob
+  served_model_name: bob
+  url: http://127.0.0.1:8101/v1/chat/completions
+
+sample_count: 100          # tasks per iteration
+explore_count: 8           # trajectories per task
+max_round: 10
+max_tokens_per_turn: 2000
+iteration_times: 3
+episilon: 0.5
+lambda1: -0.6
+lambda2: 1.0
+cal_ppl: true
+from_initial: false        # IE: continue from the previous iteration checkpoint
+prompt_pool_path: ""       # base prompt already carries the name instruction
+temperature_iter0: 0.3
+temperature: 0.7
+selection_trim_low: 0.0    # paper: top 70%
+selection_trim_high: 0.7
+train_enabled: true
+runs_root: runs
+thread_count: 16
+scorer_batch_size: 16
+scorer_device: cuda:0
+health_check_timeout: 120
+
+sft:
+  learning_rate: 2.0e-5
+  num_train_epochs: 4.0
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  max_seq_length: 2048
+  bf16: true
+  gradient_checkpointing: true
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  logging_steps: 1
+  report_to: none
+  train_ratio: 0.98
+  filter_long_samples: true

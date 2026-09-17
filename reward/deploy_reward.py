@@ -1,14 +1,9 @@
 import logging
 import multiprocessing.pool
-from fastapi import FastAPI, Body
-from fastapi.middleware.cors import CORSMiddleware
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from answerParser.parser import is_equiv
-import ray
-from ray import serve
-from ray.serve.handle import DeploymentHandle
 from pydantic import BaseModel
 import json
 from reward.reward import cal_f1_score
@@ -20,36 +15,84 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExec
 import multiprocessing
 import re
 
-app = FastAPI()
-logger = logging.getLogger("ray.serve")
+# Legacy Ray-Serve reward server. The new pipeline uses reward/scorer.py
+# in-process instead; keep this module importable without ray/fastapi so
+# other (dpo-era) code that imports it keeps working in train_env.
+try:
+    from fastapi import FastAPI, Body
+    from fastapi.middleware.cors import CORSMiddleware
+
+    FASTAPI_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    FASTAPI_AVAILABLE = False
+    FastAPI = None
+    Body = None
+    CORSMiddleware = None
+
+try:
+    import ray
+    from ray import serve
+    from ray.serve.handle import DeploymentHandle
+
+    RAY_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    RAY_AVAILABLE = False
+    ray = None
+    serve = None
+    DeploymentHandle = None
+
+
+def _serve_deployment(*args, **kwargs):
+    if RAY_AVAILABLE:
+        return serve.deployment(*args, **kwargs)
+    return lambda cls: cls
+
+
+def _serve_ingress(fn_or_cls):
+    if RAY_AVAILABLE:
+        return serve.ingress(fn_or_cls)
+    return fn_or_cls
+
+
+if FASTAPI_AVAILABLE:
+    app = FastAPI()
+    logger = logging.getLogger("ray.serve")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    class Params(BaseModel):
+        texts: list[str]
+
+    @_serve_deployment(num_replicas=8)
+    @_serve_ingress(app)
+    class APIIngress:
+        def __init__(self, model_handle: DeploymentHandle) -> None:
+            self.handle = model_handle
+
+        @app.post("/ppl")
+        async def ppl(self, params: Params):
+            return await self.handle.ppl.remote(params.texts)
+else:  # pragma: no cover
+    app = None
+    logger = logging.getLogger("reward.deploy")
+
+    class Params(BaseModel):
+        texts: list[str]
+
+    class APIIngress:
+        pass
 
 reward_file_lock = threading.Lock()
 multi_lock = multiprocessing.Lock()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
-class Params(BaseModel):
-    texts: list[str]
-
-
-@serve.deployment(num_replicas=8)
-@serve.ingress(app)
-class APIIngress:
-    def __init__(self, model_handle: DeploymentHandle) -> None:
-        self.handle = model_handle
-
-    @app.post("/ppl")
-    async def ppl(self, params: Params):
-        return await self.handle.ppl.remote(params.texts)
-
-
-@serve.deployment(
+@_serve_deployment(
     ray_actor_options={"num_gpus": 1},
     num_replicas=1,
 )
@@ -104,6 +147,11 @@ class RewardModel:
 
 
 def serve_reward_model(num_replicas=1, gpu_ids: list = [0, 1, 2, 3, 4, 5, 6, 7]):
+    if not RAY_AVAILABLE:
+        raise RuntimeError(
+            "ray is not installed; the Ray reward server is unavailable. "
+            "Use reward/scorer.py (in-process) instead."
+        )
     # Initialize Ray
     ray.init(
         address="local",
@@ -151,9 +199,9 @@ def reward_batch_based_on_deploy(
                     ]
                     correct_score = max(all_score)
                 elif score_type == "exact-match":
-                    answers = [answer.strip().lower for answer in result["answer"]]
+                    answers = [answer.strip().lower() for answer in result["answer"]]
                     correct_score = (
-                        1 if result["answer"].strip().lower() in answers else 0
+                        1 if result["final_answer"].strip().lower() in answers else 0
                     )
             else:
                 if score_type == "f1-score":
@@ -407,8 +455,8 @@ def get_score_deploy(
                 ]
                 correct_score = max(all_score)
             elif score_type == "exact-match":
-                answers = [answer.strip().lower for answer in result["answer"]]
-                correct_score = 1 if result["answer"].strip().lower() in answers else 0
+                answers = [answer.strip().lower() for answer in result["answer"]]
+                correct_score = 1 if result["final_answer"].strip().lower() in answers else 0
         else:
             if score_type == "f1-score":
                 correct_score = cal_f1_score(

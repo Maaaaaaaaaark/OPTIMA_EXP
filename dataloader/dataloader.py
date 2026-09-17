@@ -70,39 +70,40 @@ class DataloaderForHotpotQA(BaseDataloader):
         self.current_task_id: int = 0
         self.dataset_name = "hotpot_qa"
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
+        rng = rng or random
         data = self.train_set[self.current_task_id]
         question = data["question"]
         answer = data["answer"]
-        supporting_facts_title: list = data["supporting_facts"]["title"]
+        supporting_facts_title: list = list(data["supporting_facts"]["title"])
         other_context_title = [
             title
             for title in data["context"]["title"]
             if title not in supporting_facts_title
         ]
-        context_sentences = {}
-
-        for i, title in enumerate(data["context"]["title"]):
-            context_sentences[title] = data["context"]["sentences"][i][0]
+        # full paragraphs: joining all sentences keeps the supporting facts
+        # (the old code took only sentence [i][0], dropping most evidence)
+        context_sentences = {
+            title: " ".join(data["context"]["sentences"][i])
+            for i, title in enumerate(data["context"]["title"])
+        }
 
         context1 = []
         context2 = []
-        count = len(supporting_facts_title)
-        for i in range(count):
-            sample_title = random.sample(supporting_facts_title, 1)[0]
+        # supporting titles shuffled with the injected rng, then split evenly
+        rng.shuffle(supporting_facts_title)
+        for i, sample_title in enumerate(supporting_facts_title):
             if i % 2 == 0:
-                context1.append(f"{context_sentences[sample_title]}\n")
+                context1.append(f"{sample_title}: {context_sentences[sample_title]}\n")
             else:
-                context2.append(f"{context_sentences[sample_title]}\n")
-                supporting_facts_title
-            supporting_facts_title.remove(sample_title)
+                context2.append(f"{sample_title}: {context_sentences[sample_title]}\n")
 
         for title in other_context_title:
-            judge = random.randint(1, 2)
+            judge = rng.randint(1, 2)
             if judge == 1:
-                context1.append(f"{context_sentences[title]}\n")
+                context1.append(f"{title}: {context_sentences[title]}\n")
             else:
-                context2.append(f"{context_sentences[title]}\n")
+                context2.append(f"{title}: {context_sentences[title]}\n")
 
         self.current_task_id += 1
         if self.current_task_id >= self.total:
@@ -125,7 +126,8 @@ class DataloaderForMWHQA(BaseDataloader):
         self.current_task_id: int = 0
         self.dataset_name = "mwh_qa"
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
+        rng = rng or random
         question = self.data[self.current_task_id]["question"]
         answer = self.data[self.current_task_id]["answer"]
         contexts = {
@@ -148,7 +150,7 @@ class DataloaderForMWHQA(BaseDataloader):
             if pair[0] not in supporting_fact_titles
         ]
         for other_context in other_contexts:
-            judge = random.randint(1, 2)
+            judge = rng.randint(1, 2)
             if judge == 1:
                 context_first.append("".join(other_context))
             else:
@@ -180,7 +182,8 @@ class DataloaderForTrivalQA(BaseDataloader):
         self.current_task_id: int = 0
         self.dataset_name = "trival_qa"
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
+        rng = rng or random
         data = self.train_set[self.current_task_id]
         search_results: list = data["search_results"]["description"]
         question = data["question"]
@@ -188,7 +191,7 @@ class DataloaderForTrivalQA(BaseDataloader):
         context1 = []
         context2 = []
         for i in range(len(search_results)):
-            context = random.choice(search_results)
+            context = rng.choice(search_results)
             search_results.remove(context)
             if i % 2 == 0:
                 context1.append(context)
@@ -221,7 +224,7 @@ class DataloaderForCBT(BaseDataloader):
         self.current_task_id: int = 0
         self.dataset_name = "cbt"
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
         data = self.train_set[self.current_task_id]
         options = data["options"]
         question = (
@@ -257,7 +260,7 @@ class DataloaderForGSM8K(BaseDataloader):
         self.total = len(self.train_set)
         self.current_task_id: int = 0
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
         data = self.train_set[self.current_task_id]
         question = data["question"]
         splited_answer = [answer.strip() for answer in data["answer"].split("####")]
@@ -315,7 +318,7 @@ class DataloaderForMATH(BaseDataloader):
         else:
             return None
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
         data = self.train_set[self.current_task_id]
         question = data["problem"]
         answer = self.extract_boxed_content(text=data["solution"])
@@ -352,7 +355,7 @@ class DataloaderForARC(BaseDataloader):
         self.current_task_id: int = 0
         self.dataset_name = "arc"
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
         data = self.train_set[self.current_task_id]
         choices_text = data["choices"]["text"]
         choices_label = data["choices"]["label"]
@@ -399,10 +402,12 @@ class DataloaderForMMLU(BaseDataloader):
             for data in self.train_set
             if data["question"] not in arc_question_list
         ]
+        # keep total in sync with the filtered list (was stale before)
+        self.total = len(self.train_set)
         local_random = random.Random(42)
         local_random.shuffle(self.train_set)
 
-    def sample_once(self):
+    def sample_once(self, rng=None):
         question, subject, choices, answer = self.train_set[self.current_task_id]
         question = (
             question

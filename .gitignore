@@ -14,3 +14,5 @@ inference_results/*
 .vscode
 .cache
 checkpoints/*
+runs/*
+logs/*

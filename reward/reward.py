@@ -177,9 +177,9 @@ def reward_batch(
                     ]
                     correct_score = max(all_score)
                 elif score_type == "exact-match":
-                    answers = [answer.strip().lower for answer in result["answer"]]
+                    answers = [answer.strip().lower() for answer in result["answer"]]
                     correct_score = (
-                        1 if result["answer"].strip().lower() in answers else 0
+                        1 if result["final_answer"].strip().lower() in answers else 0
                     )
 
             else:

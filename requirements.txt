@@ -1,8 +1,40 @@
+# =====================================================================
+# OPTIMA (Qwen) 依赖清单
+# ---------------------------------------------------------------------
+# [train_env] -- 训练/生成/打分环境（sft_script.py, sft_trainer.py, reward）
+#   不需要 ray / deepspeed / alignment-handbook。
+#
+#   ⚠️ transformers 必须卡在 4.x 的窄区间：
+#   - 下限 >=4.46：prefill 的 continue_final_message + add_generation_prompt
+#     需要 >=4.45，且 trl 0.10.1 同时代版本为 4.46+
+#   - 上限 <4.49：transformers 5.0（2026-07 发布）重写了 tokenizer 体系
+#     （apply_chat_template 不再返回 str 等），trl 0.10.1（2024-10）与
+#     vLLM 0.6.3.post1 都不兼容 5.x；4.49+ 开始改动 Trainer 内部接口。
+# =====================================================================
+torch>=2.4,<3
+transformers>=4.46,<4.49
+trl==0.10.1
+accelerate>=0.34,<2
+datasets>=2.14,<4
+peft
 openai
-rouge 
+rouge
 editdistance
-wandb
-tokenizers==0.19.1
-huggingface-hub==0.24.3
-transformers==4.43.3
-ray[serve]
+sympy
+pyyaml
+tqdm
+pydantic
+numpy
+requests
+sentencepiece
+
+# =====================================================================
+# [vllm_env] -- vLLM 服务环境（scripts/deploy_vllm.sh 使用）
+# ---------------------------------------------------------------------
+# 单独安装（vLLM 与训练环境 torch 版本要求不同；vllm 自身 pin torch==2.4.0）：
+#   conda create -n vllm_env python=3.10 -y && conda activate vllm_env
+#   pip install vllm==0.6.3.post1 torch==2.4.0 "transformers>=4.45.2,<4.47"
+#
+#   ⚠️ transformers 同样必须 <5：vllm 0.6.3.post1 的 PyPI 元数据只写
+#   >=4.45.2（无上限），装到 5.x 会直接崩；<4.47 是其发布时验证过的区间。
+# =====================================================================

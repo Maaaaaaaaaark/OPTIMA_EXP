@@ -1,59 +1,58 @@
-from train.sft import sft_train, sft_train_v2
-from argparse import ArgumentParser
-from utils.config import llama3_path_a800
-import yaml
-import os
+"""iSFT entry point for the Qwen OPTIMA pipeline.
 
-argumentParser = ArgumentParser()
-argumentParser.add_argument(
-    "--train_config_path",
-    type=str,
-    default="train/sft_recipes/hotpot_qa.yaml",
-)
-argumentParser.add_argument(
-    "--skipping",
-    type=int,
-    default=0,
-)
-argumentParser.add_argument("--vllm_env", type=str, required=True)
-argumentParser.add_argument("--alignment_env", type=str, required=True)
-argumentParser.add_argument("--skip_iteration", type=int, default=0)
-args = argumentParser.parse_args()
+Usage (on the Linux box, vLLM endpoints already deployed via
+scripts/deploy_vllm.sh):
+
+    python sft_script.py --config configs/qwen0.5b/hotpot_qa.yaml
+    python sft_script.py --config configs/qwen0.5b/arc.yaml --iterations 1 --no_train
+"""
+from argparse import ArgumentParser
+import os
+import shutil
+
+from train.sft import run_i_sft, set_seed
+from utils.run_config import load_run_config, freeze_config
+
+
+def main():
+    argumentParser = ArgumentParser()
+    argumentParser.add_argument(
+        "--config", type=str, default="configs/qwen0.5b/arc.yaml",
+        help="path to the run-config YAML",
+    )
+    argumentParser.add_argument(
+        "--iterations", type=int, default=None,
+        help="run only the first N iterations (default: all)",
+    )
+    argumentParser.add_argument(
+        "--no_train", action="store_true",
+        help="skip SFT training (generation + scoring + datasets only)",
+    )
+    argumentParser.add_argument(
+        "--overwrite", action="store_true",
+        help="delete runs/{run_name} and checkpoints/{run_name} before starting",
+    )
+    args = argumentParser.parse_args()
+
+    cfg = load_run_config(args.config)
+    if not cfg.run_name:
+        raise ValueError("run_name must be set in the config")
+
+    if args.overwrite:
+        for root in (cfg.run_dir, os.path.join("checkpoints", cfg.run_name)):
+            if os.path.exists(root):
+                print(f"[overwrite] removing {root}")
+                shutil.rmtree(root)
+
+    set_seed(cfg.seed)
+    freeze_config(cfg, cfg.run_dir)
+
+    iterations = list(range(cfg.iteration_times))
+    if args.iterations is not None:
+        iterations = iterations[: args.iterations]
+
+    run_i_sft(cfg, iterations=iterations, train=not args.no_train)
+
 
 if __name__ == "__main__":
-    with open(args.train_config_path, "r") as f:
-        config = yaml.safe_load(f)
-
-    os.makedirs(config["mid_yaml_root_path"], exist_ok=True)
-    os.makedirs(config["mid_dataset_root_path"], exist_ok=True)
-    os.makedirs(config["mid_jsonl_root_path"], exist_ok=True)
-
-    sft_train_v2(
-        config["origin_yaml_path"],
-        config["initial_model_path"],
-        config["initial_dataset_path"],
-        config["dataset_type"],
-        config["mid_yaml_root_path"],
-        config["mid_jsonl_root_path"],
-        config["mid_dataset_root_path"],
-        config["check_point_root_path"],
-        config["initial_episilon"],
-        config["iteration_times"],
-        config["port"],
-        config["devices"],
-        config["tokenizer_first_path"],
-        config["tokenizer_second_path"],
-        config["sample_count"],
-        config["explore_count"],
-        config["thread_count"],
-        config["prompt_pool_path"],
-        skipping=args.skipping,
-        cal_ppl=config["cal_ppl"],
-        skip_iteration=args.skip_iteration,
-        from_initial=config["from_initial"],
-        lambda1=config["lambda1"],
-        lambda2=config["lambda2"],
-        mix_dataset=[],
-        vllm_env=args.vllm_env,
-        alignment_env=args.alignment_env,
-    )
+    main()
