@@ -28,6 +28,9 @@ def test_gemma_hotpot_config_loads():
     assert cfg.require_name_prefix is True
     assert cfg.sft.response_template == "<start_of_turn>model\n"
     assert cfg.sft.instruction_template == "<start_of_turn>user\n"
+    assert cfg.sft.bf16 is False
+    assert cfg.sft.fp16 is True
+    assert cfg.sft.use_lora is True
 
 
 def test_gemma_smoke_config_loads_with_conservative_values():
@@ -44,6 +47,8 @@ def test_gemma_smoke_config_loads_with_conservative_values():
     assert cfg.require_name_prefix is True
     assert cfg.train_enabled is False
     assert cfg.sft.bf16 is False
+    assert cfg.sft.fp16 is True
+    assert cfg.sft.use_lora is True
 
 
 def test_reward_formula_and_selection_unchanged_vs_qwen15():

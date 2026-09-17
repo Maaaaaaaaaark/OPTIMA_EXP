@@ -27,7 +27,19 @@ class SFTTrainingConfig:
     gradient_accumulation_steps: int = 4
     max_seq_length: int = 2048
     bf16: bool = True
+    fp16: bool = False
     gradient_checkpointing: bool = True
+    # Parameter-efficient training.  When enabled, the trainer updates LoRA
+    # weights only, then merges them into a normal full checkpoint so the
+    # next vLLM iteration can load the output path without adapter plumbing.
+    use_lora: bool = False
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    lora_target_modules: List[str] = field(default_factory=lambda: [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ])
     lr_scheduler_type: str = "cosine"
     warmup_ratio: float = 0.1
     logging_steps: int = 1

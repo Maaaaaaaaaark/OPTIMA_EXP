@@ -61,8 +61,18 @@ class LossScorer:
         # and the ignore_index masking keep working (Qwen already has one).
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        model_dtype: Any = "auto"
+        if (
+            str(device).startswith("cuda")
+            and torch.cuda.is_available()
+            and not torch.cuda.is_bf16_supported()
+        ):
+            # Gemma 2 checkpoints default to bf16, which a Tesla T4 cannot
+            # execute natively.  This changes storage dtype only; the frozen
+            # R_loss formula and all reward rules remain identical.
+            model_dtype = torch.float16
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_path, torch_dtype="auto"
+            model_path, torch_dtype=model_dtype
         ).to(device)
         self.model.eval()
         for p in self.model.parameters():

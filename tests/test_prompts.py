@@ -35,7 +35,7 @@ def test_base_prompt_keeps_author_protocol():
     # author-faithful protocol markers survive in the rendered prompt
     text = build("Alice", "Bob", "Q?", "ctx")
     assert "<A>{answer}</A>" in text
-    assert 'You must begin your response with "${name}:".' in text
+    assert 'You must begin your response with "Alice:".' in text
     assert "continuous communication with your partner" in text
 
 

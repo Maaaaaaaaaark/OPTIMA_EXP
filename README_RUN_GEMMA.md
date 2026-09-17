@@ -53,13 +53,15 @@ Qwen 配置 `merge_system_into_user: false`，上述三处全部走原路径，�
 | torch | 2.4.0 | ✓ |
 | Python | 3.12 | vLLM 0.6.3.post1 setup.py 声明 3.8–3.12 ✓ |
 
-**不需要任何升级。** 注意 T4 没有原生 bf16，vLLM 会用 fp16 服务模型。
+**不需要任何升级。** T4 没有原生 bf16，因此部署命令必须显式设置
+`DTYPE=half`；冻结 Reward Scorer 也会在不支持 bf16 的 CUDA 设备上以
+fp16 加载。数据类型适配不改变 Reward 公式。
 
 ## Linux 运行（主实验）
 
 ```bash
 # 1. 部署两个 vLLM 端点（都服务同一个 Gemma 2 2B）
-MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
+DTYPE=half MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
     google/gemma-2-2b-it google/gemma-2-2b-it
 
 # 2. 完整 pipeline（每个 iteration：生成 → 打分 → 选择 → SFT → 重启 vLLM）
@@ -75,7 +77,8 @@ scripts/run_pipeline.sh configs/gemma2-2b/hotpot_qa.yaml
 ## Colab Tesla T4 冒烟（15 GB，先 --no_train）
 
 ```bash
-MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
+VLLM_BIN=/content/optima-vllm/bin/vllm \
+DTYPE=half MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
     google/gemma-2-2b-it google/gemma-2-2b-it
 python sft_script.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --no_train
 python scripts/check_iteration.py \
@@ -84,6 +87,13 @@ python scripts/check_iteration.py \
 
 冒烟规模：10 任务 × 2 轨迹、max_round 8、每轮 256 token、1 个 iteration、
 thread_count 2、scorer_batch_size 1、`train_enabled: false`（`--no_train` 双保险）。
+
+## T4 训练方式
+
+Gemma 主配置使用 fp16 LoRA（batch size 1、gradient accumulation 16），不在
+T4 上做全参数 Adam 训练。训练完成后 LoRA 会自动合并回基础模型并保存为标准
+Hugging Face 完整 checkpoint，因此下一轮 vLLM 仍可直接加载
+`checkpoints/<run>/alice|bob/iteration_<i>`，无需改变部署接口。
 
 ## 测试
 

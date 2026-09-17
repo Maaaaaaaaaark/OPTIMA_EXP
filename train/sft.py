@@ -173,8 +173,18 @@ def _train_one(cfg: RunConfig, model_path: str, dataset_path: str, output_dir: s
     ]
     if sft.bf16:
         cmd.append("--bf16")
+    if sft.fp16:
+        cmd.append("--fp16")
     if sft.gradient_checkpointing:
         cmd.append("--gradient_checkpointing")
+    if sft.use_lora:
+        cmd.extend([
+            "--use_lora",
+            "--lora_r", str(sft.lora_r),
+            "--lora_alpha", str(sft.lora_alpha),
+            "--lora_dropout", str(sft.lora_dropout),
+            "--lora_target_modules", ",".join(sft.lora_target_modules),
+        ])
     print(f"[train] {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
