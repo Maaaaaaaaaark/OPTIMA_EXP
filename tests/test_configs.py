@@ -31,6 +31,7 @@ def test_gemma_hotpot_config_loads():
     assert cfg.sft.bf16 is False
     assert cfg.sft.fp16 is True
     assert cfg.sft.use_lora is True
+    assert cfg.release_vllm_before_scoring is True
 
 
 def test_gemma_smoke_config_loads_with_conservative_values():
@@ -49,6 +50,7 @@ def test_gemma_smoke_config_loads_with_conservative_values():
     assert cfg.sft.bf16 is False
     assert cfg.sft.fp16 is True
     assert cfg.sft.use_lora is True
+    assert cfg.release_vllm_before_scoring is True
 
 
 def test_reward_formula_and_selection_unchanged_vs_qwen15():

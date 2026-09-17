@@ -61,24 +61,22 @@ fp16 加载。数据类型适配不改变 Reward 公式。
 
 ```bash
 # 1. 部署两个 vLLM 端点（都服务同一个 Gemma 2 2B）
-DTYPE=half MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
+DTYPE=half MEM_UTIL=0.40 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
     google/gemma-2-2b-it google/gemma-2-2b-it
 
-# 2. 完整 pipeline（每个 iteration：生成 → 打分 → 选择 → SFT → 重启 vLLM）
-python sft_script.py --config configs/gemma2-2b/hotpot_qa.yaml
-
-# 或由脚本包办 deploy/sft 循环（run_pipeline.sh 已改为从 YAML 读 base_model_path）
+# 2. 由脚本逐轮执行：部署 → 生成 → 释放 vLLM → 打分 → LoRA SFT
 scripts/run_pipeline.sh configs/gemma2-2b/hotpot_qa.yaml
 ```
 
-内存说明：两个 vLLM 端点 + 进程内冻结 2B Scorer 共享一张卡，所以
-`MEM_UTIL=0.25`、`MAX_MODEL_LEN=4096` 比默认值保守。
+内存说明：生成阶段两个 vLLM 端点各使用最多 40% GPU。生成结束后配置项
+`release_vllm_before_scoring: true` 会先终止两个服务及其 CUDA worker，再独占
+GPU 加载冻结 2B Scorer；评分结束后也会主动释放 scorer 显存。
 
 ## Colab Tesla T4 冒烟（15 GB，先 --no_train）
 
 ```bash
 VLLM_BIN=/content/optima-vllm/bin/vllm \
-DTYPE=half MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
+DTYPE=half MEM_UTIL=0.40 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
     google/gemma-2-2b-it google/gemma-2-2b-it
 python sft_script.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --no_train
 python scripts/check_iteration.py \

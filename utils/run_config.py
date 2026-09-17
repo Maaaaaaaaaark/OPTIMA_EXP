@@ -94,6 +94,10 @@ class RunConfig:
     scorer_batch_size: int = 16
     scorer_device: str = "cuda:0"
     health_check_timeout: float = 120.0
+    # On small GPUs, release external vLLM workers after generation so the
+    # frozen reward model and subsequent trainer can use the whole device.
+    # Each iteration must then be launched separately (run_pipeline.sh does so).
+    release_vllm_before_scoring: bool = False
 
     # ---- derived paths ----
     @property

@@ -51,6 +51,7 @@ thread_count: 2
 scorer_batch_size: 1
 scorer_device: cuda:0
 health_check_timeout: 120
+release_vllm_before_scoring: true
 
 sft:
   learning_rate: 2.0e-5

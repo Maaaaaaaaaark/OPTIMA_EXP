@@ -13,6 +13,7 @@ Special rules carried over from the old code:
 - when name prefixes are required, mixing/repeating names -> correct_score = 0
 """
 from typing import Any, Dict, List, Optional, Tuple
+import gc
 import json
 import os
 import re
@@ -259,4 +260,8 @@ def score_all(cfg: RunConfig, iteration: int) -> int:
     with open(rewarded_path, "w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    del scorer
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return len(rows)

@@ -33,7 +33,7 @@ for ((i = 0; i < TOTAL; i++)); do
   fi
   echo "===== iteration ${i}: alice=${ALICE} bob=${BOB} ====="
   scripts/deploy_vllm.sh "${ALICE}" "${BOB}"
-  python sft_script.py --config "${CONFIG}" --iterations $((i + 1))
+  python sft_script.py --config "${CONFIG}" --iteration "${i}"
   scripts/deploy_vllm.sh stop
 done
 

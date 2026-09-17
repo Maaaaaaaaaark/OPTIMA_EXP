@@ -25,6 +25,10 @@ def main():
         help="run only the first N iterations (default: all)",
     )
     argumentParser.add_argument(
+        "--iteration", type=int, default=None,
+        help="run exactly one zero-based iteration (for sequential GPU orchestration)",
+    )
+    argumentParser.add_argument(
         "--no_train", action="store_true",
         help="skip SFT training (generation + scoring + datasets only)",
     )
@@ -33,6 +37,8 @@ def main():
         help="delete runs/{run_name} and checkpoints/{run_name} before starting",
     )
     args = argumentParser.parse_args()
+    if args.iterations is not None and args.iteration is not None:
+        argumentParser.error("--iterations and --iteration are mutually exclusive")
 
     cfg = load_run_config(args.config)
     if not cfg.run_name:
@@ -48,7 +54,11 @@ def main():
     freeze_config(cfg, cfg.run_dir)
 
     iterations = list(range(cfg.iteration_times))
-    if args.iterations is not None:
+    if args.iteration is not None:
+        if args.iteration < 0 or args.iteration >= cfg.iteration_times:
+            argumentParser.error("--iteration is outside the configured range")
+        iterations = [args.iteration]
+    elif args.iterations is not None:
         iterations = iterations[: args.iterations]
 
     run_i_sft(cfg, iterations=iterations, train=not args.no_train)

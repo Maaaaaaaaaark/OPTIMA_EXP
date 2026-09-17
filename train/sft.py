@@ -12,6 +12,7 @@ import random
 import subprocess
 import sys
 import time
+import gc
 
 import numpy as np
 import requests
@@ -68,6 +69,64 @@ def build_dataloader(cfg: RunConfig):
     raise ValueError(f"unknown dataset_type: {cfg.dataset_type}")
 
 
+def release_vllm_processes() -> None:
+    """Stop vLLM servers and their worker descendants, then wait for GPU RAM.
+
+    This is opt-in through ``release_vllm_before_scoring`` and is intended for
+    a single-GPU sequential pipeline.  It never targets unrelated Python
+    processes.
+    """
+    try:
+        import psutil
+    except ImportError as exc:
+        raise RuntimeError(
+            "release_vllm_before_scoring requires psutil"
+        ) from exc
+
+    parents = []
+    for process in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            command = " ".join(process.info.get("cmdline") or [])
+            if "vllm serve" in command:
+                parents.append(process)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    targets = []
+    for parent in parents:
+        try:
+            targets.extend(parent.children(recursive=True))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        targets.append(parent)
+
+    # Children first avoids leaving CUDA worker processes behind.
+    unique = {process.pid: process for process in targets}
+    ordered = list(unique.values())
+    for process in ordered:
+        try:
+            process.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    _, alive = psutil.wait_procs(ordered, timeout=15)
+    for process in alive:
+        try:
+            process.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    if alive:
+        psutil.wait_procs(alive, timeout=10)
+
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+    print(f"[memory] released {len(unique)} vLLM server/worker processes")
+
+
 def health_check_endpoint(url: str, model_name: str, timeout: float = 120.0) -> None:
     """One quick request per endpoint; raise on failure instead of the old
     infinite poll loop."""
@@ -122,6 +181,8 @@ def run_i_sft(cfg: RunConfig, iterations=None, train: bool = True) -> None:
             loader.sample_once()
 
         generate_all(cfg, loader, i)
+        if cfg.release_vllm_before_scoring:
+            release_vllm_processes()
         score_all(cfg, i)
         selected = select_trajectories(cfg, i)
         write_transcripts(cfg, i)
