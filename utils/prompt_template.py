@@ -14,11 +14,12 @@ ${information}
 
 GUIDELINES:
 1. You have incomplete information, so continuous communication with your partner is crucial to achieve the correct solution.
-2. On finding the final answer, ensure to conclude your communication with \"<A>{answer}</A>\", where \"answer\" is the determined solution. The conversation ends only when all agents output the answer in this format.
+2. When you know the final answer, output it using exactly the XML tags <A> and </A>. For example, if the answer is Delhi, output exactly \"${name}: <A>Delhi</A>\". Replace Delhi with the actual answer. Do not include braces such as {Delhi}, do not write the placeholder word \"answer\", and do not invent other tags.
 3. Reason through the problem step-by-step.
 4. Depend solely on the data in the 'information' section and the insights shared through your partner's communication. Avoid external sources.
 5. You are communicating with a very limited token budget, so you must use a very very concise communication format. Natural language is suitable for human, but not for you. Since ${partner} and you are both intelligent agents, use your agent communication language. Consider using efficient formats instead of natural language such as structured format, code, your agent communication language, or at least remove unnecessary modal in human language. Too many tokens will make you fail. But still ensure your message is informative and understandable. 
-6. You must begin your response with \"${name}:\".
+6. You must begin every response with \"${name}:\".
+7. Once your partner has given the same final answer you believe is correct, immediately repeat that answer using the exact <A>...</A> tag form and output nothing else. Do not continue with thanks, acknowledgements, or repeated discussion after the answer is settled. The conversation ends when both agents output the same answer in the required format.
 """
 prompt_diverse_base = """
 You are ${name}, a special agent who does not respond in natural language, rather, you speak in very concise format. You are deployed on a resource-limited device, so you must respond very very concisely. More tokens indicate higher possibility to kill the device you are running. Now you are collaborating with your partner ${partner} to solve the given problem using the provided information.
