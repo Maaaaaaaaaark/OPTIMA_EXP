@@ -96,7 +96,19 @@ def flatten(results_rows):
 
 
 def split_chat(text):
-    """Parse a templated Qwen chat string into [(role, content), ...]."""
+    """Parse a templated chat string into [(role, content), ...].
+
+    Supports both the Qwen template (``<|im_start|>role`` / ``<|im_end|>``)
+    and the Gemma template (``<start_of_turn>user|model`` / ``<end_of_turn>``;
+    "model" is mapped back to "assistant")."""
+    if "<start_of_turn>" in text:
+        parts = re.split(r"<start_of_turn>(user|model)\n", text)
+        out = []
+        for i in range(1, len(parts) - 1, 2):
+            role = "assistant" if parts[i] == "model" else parts[i]
+            content = parts[i + 1].replace("<end_of_turn>", "").rstrip("\n")
+            out.append((role, content))
+        return out
     parts = re.split(r"<\|im_start\|>(\w+)\n", text)
     out = []
     for i in range(1, len(parts) - 1, 2):
@@ -488,13 +500,6 @@ def check_datasets(cfg, iteration, cleaned_flat, rep):
                 continue
             checked += 1
             msgs = split_chat(row["text"])
-            if not msgs or msgs[0][0] != "system":
-                bad_role += 1
-                continue
-            # compare stripped: chat templates may trim surrounding whitespace
-            if msgs[0][1].strip() != (src.get(role_key) or "").strip():
-                bad_role += 1
-                continue
             own = [t["content"] for t in src.get("turns", []) if t.get("speaker") == speaker]
             other = [
                 t["content"] for t in src.get("turns", [])
@@ -503,6 +508,35 @@ def check_datasets(cfg, iteration, cleaned_flat, rep):
             got_assistant = [c.strip() for r, c in msgs if r == "assistant"]
             got_user = [c.strip() for r, c in msgs if r == "user"]
             if got_assistant != [c.strip() for c in own]:
+                bad_role += 1
+                continue
+            if cfg.merge_system_into_user:
+                # system prompt is merged into the first user message: either
+                # it stands alone there (own turn came first) or the first
+                # partner turn follows it (partner turn came first)
+                system = (src.get(role_key) or "").strip()
+                if not msgs or msgs[0][0] != "user":
+                    bad_role += 1
+                    continue
+                if not got_user or not got_user[0].startswith(system):
+                    bad_role += 1
+                    continue
+                rest = got_user[0][len(system):].strip()
+                if rest == "":
+                    expected = [c.strip() for c in other]
+                elif other and rest == other[0].strip():
+                    expected = [c.strip() for c in other[1:]]
+                else:
+                    bad_role += 1
+                    continue
+                if got_user[1:] != expected:
+                    bad_role += 1
+                continue
+            if not msgs or msgs[0][0] != "system":
+                bad_role += 1
+                continue
+            # compare stripped: chat templates may trim surrounding whitespace
+            if msgs[0][1].strip() != (src.get(role_key) or "").strip():
                 bad_role += 1
                 continue
             if got_user != [c.strip() for c in other]:

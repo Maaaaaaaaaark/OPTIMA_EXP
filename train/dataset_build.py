@@ -23,6 +23,7 @@ import numpy as np
 from datasets import Dataset, DatasetDict
 
 from utils.run_config import RunConfig
+from message.message import adapt_messages_for_chat_template
 
 NAME_PENALTY = -10.0
 
@@ -117,6 +118,7 @@ def _templated_row(
     speaker: str,
     system_prompt: str,
     max_seq_length: int,
+    merge_system_into_user: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """One SFT row from the perspective of `speaker`: own turns = assistant,
     partner turns = user, using the RECORDED system prompt (not a
@@ -132,6 +134,10 @@ def _templated_row(
             messages.append({"role": "user", "content": turn.get("content", "")})
     if not any(m["role"] == "assistant" for m in messages):
         return None
+    # Gemma-style templates reject the system role: merge it into the first
+    # user message so the row is identical to what the agent sends at
+    # inference time (train/inference consistency).
+    messages = adapt_messages_for_chat_template(messages, merge_system_into_user)
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
     if len(tokenizer.encode(text)) > max_seq_length:
         return None
@@ -158,7 +164,12 @@ def build_speaker_datasets(
         limit = max_seq_length if cfg.sft.filter_long_samples else 10**9
         for result in selected:
             row = _templated_row(
-                tokenizer, result, speaker, result.get(system_key, ""), limit
+                tokenizer,
+                result,
+                speaker,
+                result.get(system_key, ""),
+                limit,
+                merge_system_into_user=cfg.merge_system_into_user,
             )
             if row is not None:
                 rows.append(row)

@@ -66,6 +66,12 @@ class RunConfig:
     from_initial: bool = True      # debate: restart from base every iteration
     prompt_pool_path: str = ""     # format-diversity pool used at iteration 0
     require_name_prefix: bool = True  # require/generated text to start with Alice:/Bob:
+    # Gemma-style chat templates reject the "system" role and require strict
+    # user/assistant alternation starting with user. When true, the leading
+    # system message is merged into the first user message (agent requests,
+    # SFT dataset templating and the frozen loss-scorer framing). Prompt text
+    # itself is never modified. Qwen configs leave this false.
+    merge_system_into_user: bool = False
     temperature_iter0: float = 0.3
     temperature: float = 0.7
     selection_trim_low: float = 0.0   # paper: top-70% -> (0.0, 0.7)

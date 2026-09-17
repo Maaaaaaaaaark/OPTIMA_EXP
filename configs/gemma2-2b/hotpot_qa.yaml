@@ -1,0 +1,70 @@
+# OPTIMA iSFT on google/gemma-2-2b-it -- Information Exchange (HotpotQA)
+#
+# Drops into the same run-config pipeline as the Qwen configs
+# (sft_script.py -> train/sft.py -> generate / reward / select / train).
+# The OPTIMA protocol, reward formula and selection thresholds are kept
+# identical to configs/qwen1.5b/hotpot_qa.yaml.
+seed: 42
+run_name: gemma2-2b-hotpotqa-isft
+dataset_type: hotpot_qa
+dataset_path: hotpotqa/hotpot_qa
+dataset_split: train
+base_model_path: google/gemma-2-2b-it
+
+# reward_model_path intentionally omitted: RunConfig defaults it to
+# base_model_path, so the frozen R_loss scorer is the same Gemma 2 2B.
+# Gemma's chat template rejects the "system" role and requires strict
+# user/assistant alternation starting with user, so the system prompt is
+# merged into the first user message (agent requests, SFT dataset rows and
+# loss-scorer framing). Prompt text and agent-private contexts are unchanged.
+merge_system_into_user: true
+
+alice:
+  name: Alice
+  served_model_name: alice
+  url: http://127.0.0.1:8100/v1/chat/completions
+bob:
+  name: Bob
+  served_model_name: bob
+  url: http://127.0.0.1:8101/v1/chat/completions
+
+sample_count: 100          # tasks per iteration
+explore_count: 8           # trajectories per task
+max_round: 10
+max_tokens_per_turn: 2000
+iteration_times: 3
+episilon: 0.5              # selection threshold (unchanged)
+lambda1: -0.6              # token reward weight (unchanged)
+lambda2: 1.0               # PPL reward weight (unchanged)
+cal_ppl: true
+from_initial: false        # IE: continue from the previous iteration checkpoint
+prompt_pool_path: ""       # fixed base communication prompt for iteration 0
+require_name_prefix: true  # author-faithful: model emits Alice:/Bob: in text
+temperature_iter0: 0.3
+temperature: 0.7
+selection_trim_low: 0.0    # paper: top 70%
+selection_trim_high: 0.7
+train_enabled: true
+runs_root: runs
+thread_count: 16
+scorer_batch_size: 1       # conservative: Gemma 2B scorer next to two vLLM endpoints
+scorer_device: cuda:0
+health_check_timeout: 120
+
+sft:
+  learning_rate: 2.0e-5
+  num_train_epochs: 4.0
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  max_seq_length: 2048
+  bf16: true
+  gradient_checkpointing: true
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  logging_steps: 1
+  report_to: none
+  # Gemma chat-template turn markers for DataCollatorForCompletionOnlyLM
+  response_template: "<start_of_turn>model\n"
+  instruction_template: "<start_of_turn>user\n"
+  train_ratio: 0.98
+  filter_long_samples: true

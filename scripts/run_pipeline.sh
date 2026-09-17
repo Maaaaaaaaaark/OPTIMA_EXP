@@ -13,7 +13,7 @@ set -u
 
 CONFIG="${1:-configs/qwen0.5b/hotpot_qa.yaml}"
 N_ITER="${2:-}"
-BASE_MODEL="Qwen/Qwen2.5-0.5B-Instruct"
+BASE_MODEL="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['base_model_path'])")"
 
 RUN_NAME="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['run_name'])")"
 TOTAL="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['iteration_times'])")"

@@ -25,15 +25,42 @@ from answerParser.parser import is_equiv
 from utils.run_config import RunConfig
 
 
+def frame_utterance_for_loss(tokenizer, text: str, merge_system_into_user: bool) -> str:
+    """Render one utterance as the model's own turn for LM-loss scoring.
+
+    Default framing is a lone assistant turn (Qwen: ``<|im_start|>assistant``).
+    Gemma's chat template forbids an assistant-only conversation, so there the
+    utterance is framed as an (empty user turn +) assistant turn, which renders
+    the equivalent ``<start_of_turn>model`` header. The loss formula itself is
+    unchanged in both cases.
+    """
+    if merge_system_into_user:
+        messages = [{"role": "user", "content": ""}, {"role": "assistant", "content": text}]
+    else:
+        messages = [{"role": "assistant", "content": text}]
+    return tokenizer.apply_chat_template(messages, tokenize=False)
+
+
 class LossScorer:
     """Frozen base model used to compute per-turn LM losses (R_loss term)."""
 
-    def __init__(self, model_path: str, device: str = "cuda:0", batch_size: int = 16):
+    def __init__(
+        self,
+        model_path: str,
+        device: str = "cuda:0",
+        batch_size: int = 16,
+        merge_system_into_user: bool = False,
+    ):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.device = device
         self.batch_size = batch_size
+        self.merge_system_into_user = merge_system_into_user
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        # Gemma tokenizers have no pad token; fall back to eos so padding
+        # and the ignore_index masking keep working (Qwen already has one).
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path, torch_dtype="auto"
         ).to(device)
@@ -49,9 +76,7 @@ class LossScorer:
         for start in range(0, len(texts), self.batch_size):
             chunk = texts[start : start + self.batch_size]
             templated = [
-                self.tokenizer.apply_chat_template(
-                    [{"role": "assistant", "content": t}], tokenize=False
-                )
+                frame_utterance_for_loss(self.tokenizer, t, self.merge_system_into_user)
                 for t in chunk
             ]
             inputs = self.tokenizer(
@@ -180,7 +205,10 @@ def score_all(cfg: RunConfig, iteration: int) -> int:
 
     print(f"[reward] loading frozen reward model from {cfg.reward_model_path}")
     scorer = LossScorer(
-        cfg.reward_model_path, device=cfg.scorer_device, batch_size=cfg.scorer_batch_size
+        cfg.reward_model_path,
+        device=cfg.scorer_device,
+        batch_size=cfg.scorer_batch_size,
+        merge_system_into_user=cfg.merge_system_into_user,
     )
 
     tasks: List[Dict[str, Any]] = []

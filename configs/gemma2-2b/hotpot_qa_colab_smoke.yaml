@@ -1,0 +1,70 @@
+# OPTIMA iSFT on google/gemma-2-2b-it -- HotpotQA COLAB TESLA T4 SMOKE (no train)
+#
+# Minimal end-to-end smoke for a free Colab T4 (15 GB): generation -> reward
+# -> selection -> datasets, WITHOUT SFT training. Run with:
+#
+#   MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
+#       google/gemma-2-2b-it google/gemma-2-2b-it
+#   python sft_script.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --no_train
+#   python scripts/check_iteration.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --show 3
+#
+# train_enabled is false here; pass --no_train anyway as a belt-and-braces
+# guard. Note: T4 has no native bf16, so vLLM serves the model in fp16; keep
+# MEM_UTIL low because the in-process frozen 2B scorer must fit beside the
+# two vLLM endpoints.
+seed: 42
+run_name: gemma2-2b-hotpotqa-colab-smoke
+dataset_type: hotpot_qa
+dataset_path: hotpotqa/hotpot_qa
+dataset_split: train
+base_model_path: google/gemma-2-2b-it
+merge_system_into_user: true
+
+alice:
+  name: Alice
+  served_model_name: alice
+  url: http://127.0.0.1:8100/v1/chat/completions
+bob:
+  name: Bob
+  served_model_name: bob
+  url: http://127.0.0.1:8101/v1/chat/completions
+
+sample_count: 10           # tasks per iteration
+explore_count: 2           # trajectories per task
+max_round: 8
+max_tokens_per_turn: 256
+iteration_times: 1
+episilon: 0.5              # selection threshold (unchanged)
+lambda1: -0.6              # token reward weight (unchanged)
+lambda2: 1.0               # PPL reward weight (unchanged)
+cal_ppl: true
+from_initial: false
+prompt_pool_path: ""
+require_name_prefix: true
+temperature_iter0: 0.3
+temperature: 0.7
+selection_trim_low: 0.0    # paper: top 70%
+selection_trim_high: 0.7
+train_enabled: false       # smoke: no SFT training
+runs_root: runs
+thread_count: 2
+scorer_batch_size: 1
+scorer_device: cuda:0
+health_check_timeout: 120
+
+sft:
+  learning_rate: 2.0e-5
+  num_train_epochs: 4.0
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  max_seq_length: 1536
+  bf16: false              # T4 has no native bf16 (unused while train_enabled=false)
+  gradient_checkpointing: true
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  logging_steps: 1
+  report_to: none
+  response_template: "<start_of_turn>model\n"
+  instruction_template: "<start_of_turn>user\n"
+  train_ratio: 0.98
+  filter_long_samples: true

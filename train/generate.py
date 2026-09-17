@@ -224,6 +224,7 @@ def generate_trajectory(
         max_tokens=cfg.max_tokens_per_turn,
         seed_provider=seed_provider,
         use_name_prefix=cfg.require_name_prefix,
+        merge_system_into_user=cfg.merge_system_into_user,
     )
     agent_second = VllmAgent(
         url=cfg.bob.url,
@@ -233,6 +234,7 @@ def generate_trajectory(
         max_tokens=cfg.max_tokens_per_turn,
         seed_provider=seed_provider,
         use_name_prefix=cfg.require_name_prefix,
+        merge_system_into_user=cfg.merge_system_into_user,
     )
     agent_first.init_system_prompt(
         first_template,

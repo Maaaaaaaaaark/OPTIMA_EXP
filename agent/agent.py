@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Callable
 from pydantic import BaseModel
-from message.message import llmMessage, Turn
+from message.message import llmMessage, Turn, adapt_messages_for_chat_template
 from model.llm import BaseLLM
 from string import Template
 import requests
@@ -79,6 +79,12 @@ class VllmAgent(BaseAgent):
     ends with an unterminated assistant message "Alice:" and the response
     content is the natural continuation (the prefill itself is NOT echoed
     back), so the agent prepends the name prefix itself.
+
+    For Gemma-style chat templates (which reject the system role), pass
+    ``merge_system_into_user=True``: the outgoing message list is adapted
+    (system prompt merged into the first user message, roles alternate
+    starting with user) before the request; the recorded system prompt and
+    memory are left untouched.
     """
 
     def __init__(
@@ -90,6 +96,7 @@ class VllmAgent(BaseAgent):
         max_tokens: int = 2000,
         seed_provider: Optional[Callable[[], Optional[int]]] = None,
         use_name_prefix: bool = True,
+        merge_system_into_user: bool = False,
     ):
         self.url = url
         self.prompt_template = ""
@@ -102,6 +109,7 @@ class VllmAgent(BaseAgent):
         # deterministic sampling: returns a per-request seed or None
         self.seed_provider = seed_provider
         self.use_name_prefix = use_name_prefix
+        self.merge_system_into_user = merge_system_into_user
 
     def init_system_prompt(self, template: str, args: dict):
         self.system_prompt.content = Template(template).safe_substitute(args)
@@ -119,6 +127,8 @@ class VllmAgent(BaseAgent):
             {"role": message.role, "content": message.content}
             for message in self.memory
         ]
+        if self.merge_system_into_user:
+            message_input = adapt_messages_for_chat_template(message_input, True)
         is_iteration_0 = _is_iteration_0(self.system_prompt.content)
         headers = {"Content-Type": "application/json"}
         data_json = {
