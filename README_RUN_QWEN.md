@@ -141,6 +141,13 @@ transcript 里每条发言都带 speaker / token 数 / `<A>...</A>` 解析结果
    configs/qwen0.5b/hotpot_qa.yaml --no_train --iterations 1` → raw/rewarded/cleaned
    各 100 行、按 (task_id, trajectory_id) 排序；`transcripts/` 800 个 txt 可读；
    arc.yaml 同样跑一遍。
+   跑完用自动核查脚本过一遍六项验收标准（数量 / 双 agent 独立性 / 对话格式 /
+   终止原因 / 打分与筛选 / 训练数据集角色路由）：
+   ```bash
+   python scripts/check_iteration.py --config configs/qwen0.5b/hotpot_qa.yaml --show 3
+   python scripts/check_iteration.py --config configs/qwen0.5b/arc.yaml --show 3
+   ```
+   退出码非 0 表示有 FAIL 项（会打印具体原因与样例对话），先修再训练。
 4. **确定性**：删 run 目录，同 seed 重跑（--no_train），`diff -r` 为空。
 5. **含训练 smoke**：`python sft_script.py --config configs/qwen0.5b/hotpot_qa.yaml
    --iterations 1` → `checkpoints/{run}/{alice,bob}/iteration_0` 各含

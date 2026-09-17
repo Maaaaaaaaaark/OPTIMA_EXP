@@ -2,7 +2,7 @@
 seed: 42
 run_name: qwen0.5b-hotpotqa-isft
 dataset_type: hotpot_qa
-dataset_path: hotpotqa
+dataset_path: hotpotqa/hotpot_qa
 dataset_split: train
 base_model_path: Qwen/Qwen2.5-0.5B-Instruct
 
