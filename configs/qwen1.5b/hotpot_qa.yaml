@@ -28,7 +28,7 @@ lambda2: 1.0
 cal_ppl: true
 from_initial: false        # IE: continue from the previous iteration checkpoint
 prompt_pool_path: ""       # fixed base communication prompt for iteration 0
-require_name_prefix: false # speaker identity is recorded as metadata, not generated text
+require_name_prefix: true  # author-faithful: model emits Alice:/Bob: in text
 temperature_iter0: 0.3
 temperature: 0.7
 selection_trim_low: 0.0    # paper: top 70%
