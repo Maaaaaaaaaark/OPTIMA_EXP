@@ -44,18 +44,18 @@ Gemma 官方 jinja 模板对以下输入直接报错：
 
 Qwen 配置 `merge_system_into_user: false`，上述三处全部走原路径，输出逐字节不变。
 
-## 依赖兼容性结论（无需升级）
+## 依赖兼容性结论
 
 | 依赖 | 现有版本 | Gemma2 支持情况 |
 |---|---|---|
 | transformers | 4.46.3 | Gemma2/Gemma2ForCausalLM 自 4.42.0 加入（4.42.4 修复完整），且 ≥ 4.45 满足 prefill 机制要求 ✓ |
-| vLLM | 0.6.3.post1 | Gemma2 自 v0.5.2 注册 ✓，prefill（continue_final_message）需 ≥ 0.6.3 ✓ |
+| vLLM | 0.6.3.post1 | Ampere 可用；T4/Turing 回退到 XFormers，该后端不支持 Gemma 2 soft-capping ✗ |
 | torch | 2.4.0 | ✓ |
 | Python | 3.12 | vLLM 0.6.3.post1 setup.py 声明 3.8–3.12 ✓ |
 
-**不需要任何升级。** T4 没有原生 bf16，因此部署命令必须显式设置
-`DTYPE=half`；冻结 Reward Scorer 也会在不支持 bf16 的 CUDA 设备上以
-fp16 加载。数据类型适配不改变 Reward 公式。
+T4 没有原生 bf16。为保留 Gemma 2 原始 soft-capping，T4 路径不用 vLLM，
+而是让 Alice/Bob 各运行一个独立 Transformers eager-attention 进程。冻结
+Reward Scorer 同样以 fp16 加载；数据类型适配不改变 Reward 公式。
 
 ## Linux 运行（主实验）
 
@@ -75,9 +75,9 @@ GPU 加载冻结 2B Scorer；评分结束后也会主动释放 scorer 显存。
 ## Colab Tesla T4 冒烟（15 GB，先 --no_train）
 
 ```bash
-VLLM_BIN=/content/optima-vllm/bin/vllm \
-DTYPE=half MEM_UTIL=0.40 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
-    google/gemma-2-2b-it google/gemma-2-2b-it
+PYTHON_BIN=/content/optima-train/bin/python START_BOTH=1 DTYPE=half \
+  scripts/deploy_transformers.sh \
+  google/gemma-2-2b-it google/gemma-2-2b-it
 python sft_script.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --no_train
 python scripts/check_iteration.py \
     --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --show 3
@@ -86,12 +86,21 @@ python scripts/check_iteration.py \
 冒烟规模：10 任务 × 2 轨迹、max_round 8、每轮 256 token、1 个 iteration、
 thread_count 2、scorer_batch_size 1、`train_enabled: false`（`--no_train` 双保险）。
 
+两个端点即使初始 checkpoint 相同，也属于两个不同 OS 进程，分别持有模型实例、
+KV cache、请求锁、端口和对话状态。训练后分别加载 Alice/Bob checkpoint，不共享
+参数或 memory。生成结束后配置项会停止两个服务，再让 Reward Scorer 独占 T4。
+
 ## T4 训练方式
 
 Gemma 主配置使用 fp16 LoRA（batch size 1、gradient accumulation 16），不在
 T4 上做全参数 Adam 训练。训练完成后 LoRA 会自动合并回基础模型并保存为标准
-Hugging Face 完整 checkpoint，因此下一轮 vLLM 仍可直接加载
-`checkpoints/<run>/alice|bob/iteration_<i>`，无需改变部署接口。
+Hugging Face 完整 checkpoint，因此下一轮 Transformers 服务可分别加载
+`checkpoints/<run>/alice|bob/iteration_<i>`。完整循环可使用：
+
+```bash
+PYTHON_BIN=/content/optima-train/bin/python DEPLOY_BACKEND=transformers \
+  scripts/run_pipeline.sh configs/gemma2-2b/hotpot_qa.yaml
+```
 
 ## 测试
 

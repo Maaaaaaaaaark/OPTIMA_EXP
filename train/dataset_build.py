@@ -173,7 +173,10 @@ def build_speaker_datasets(
             )
             if row is not None:
                 rows.append(row)
-        dataset = Dataset.from_list(rows)
+        # Preserve a typed empty dataset when no trajectory passes epsilon.
+        # Dataset.from_list([]) has no schema and cannot be saved to disk.
+        dataset = (Dataset.from_list(rows) if rows
+                   else Dataset.from_dict({"text": []}))
         n = len(rows)
         split = int(cfg.sft.train_ratio * n)
         train = dataset.select(range(split))

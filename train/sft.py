@@ -70,7 +70,7 @@ def build_dataloader(cfg: RunConfig):
 
 
 def release_vllm_processes() -> None:
-    """Stop vLLM servers and their worker descendants, then wait for GPU RAM.
+    """Stop supported inference servers and descendants, then wait for GPU RAM.
 
     This is opt-in through ``release_vllm_before_scoring`` and is intended for
     a single-GPU sequential pipeline.  It never targets unrelated Python
@@ -87,7 +87,8 @@ def release_vllm_processes() -> None:
     for process in psutil.process_iter(["pid", "cmdline"]):
         try:
             command = " ".join(process.info.get("cmdline") or [])
-            if "vllm serve" in command:
+            if ("vllm serve" in command or
+                    "scripts/transformers_openai_server.py" in command):
                 parents.append(process)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
@@ -124,7 +125,7 @@ def release_vllm_processes() -> None:
             torch.cuda.empty_cache()
     except ImportError:
         pass
-    print(f"[memory] released {len(unique)} vLLM server/worker processes")
+    print(f"[memory] released {len(unique)} inference server/worker processes")
 
 
 def health_check_endpoint(url: str, model_name: str, timeout: float = 120.0) -> None:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Optional full-loop wrapper: runs iSFT iteration by iteration, re-deploying
-# vLLM with the freshly trained checkpoints between iterations.
+# the selected inference backend with freshly trained checkpoints.
 #
 #   scripts/run_pipeline.sh                          # hotpot_qa config, all iterations
 #   scripts/run_pipeline.sh configs/qwen0.5b/arc.yaml
@@ -13,12 +13,20 @@ set -u
 
 CONFIG="${1:-configs/qwen0.5b/hotpot_qa.yaml}"
 N_ITER="${2:-}"
-BASE_MODEL="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['base_model_path'])")"
+DEPLOY_BACKEND="${DEPLOY_BACKEND:-vllm}"
+PIPELINE_PYTHON="${PYTHON_BIN:-python}"
+BASE_MODEL="$("${PIPELINE_PYTHON}" -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['base_model_path'])")"
 
-RUN_NAME="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['run_name'])")"
-TOTAL="$(python -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['iteration_times'])")"
-FROM_INITIAL="$(python -c "import yaml; print(bool(yaml.safe_load(open('${CONFIG}')).get('from_initial', False)))")"
+RUN_NAME="$("${PIPELINE_PYTHON}" -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['run_name'])")"
+TOTAL="$("${PIPELINE_PYTHON}" -c "import yaml; print(yaml.safe_load(open('${CONFIG}'))['iteration_times'])")"
+FROM_INITIAL="$("${PIPELINE_PYTHON}" -c "import yaml; print(bool(yaml.safe_load(open('${CONFIG}')).get('from_initial', False)))")"
 CKPT_ROOT="checkpoints/${RUN_NAME}"
+
+if [ "${DEPLOY_BACKEND}" = "transformers" ]; then
+  DEPLOY_SCRIPT="scripts/deploy_transformers.sh"
+else
+  DEPLOY_SCRIPT="scripts/deploy_vllm.sh"
+fi
 
 if [ -n "${N_ITER}" ]; then
   TOTAL="${N_ITER}"
@@ -32,9 +40,13 @@ for ((i = 0; i < TOTAL; i++)); do
     BOB="${CKPT_ROOT}/bob/iteration_$((i - 1))"
   fi
   echo "===== iteration ${i}: alice=${ALICE} bob=${BOB} ====="
-  scripts/deploy_vllm.sh "${ALICE}" "${BOB}"
-  python sft_script.py --config "${CONFIG}" --iteration "${i}"
-  scripts/deploy_vllm.sh stop
+  if [ "${DEPLOY_BACKEND}" = "transformers" ]; then
+    START_BOTH=1 "${DEPLOY_SCRIPT}" "${ALICE}" "${BOB}"
+  else
+    "${DEPLOY_SCRIPT}" "${ALICE}" "${BOB}"
+  fi
+  "${PIPELINE_PYTHON}" sft_script.py --config "${CONFIG}" --iteration "${i}"
+  "${DEPLOY_SCRIPT}" stop
 done
 
 echo "[pipeline] done"

@@ -1,17 +1,18 @@
 # OPTIMA iSFT on google/gemma-2-2b-it -- HotpotQA COLAB TESLA T4 SMOKE (no train)
 #
 # Minimal end-to-end smoke for a free Colab T4 (15 GB): generation -> reward
-# -> selection -> datasets, WITHOUT SFT training. Run with:
+# -> selection -> datasets, WITHOUT SFT training. Gemma 2 soft-capping cannot
+# run through vLLM 0.6.3's Turing backends, so use two independent
+# Transformers services.
 #
-#   MEM_UTIL=0.25 MAX_MODEL_LEN=4096 scripts/deploy_vllm.sh \
-#       google/gemma-2-2b-it google/gemma-2-2b-it
+#   PYTHON_BIN=/content/optima-train/bin/python START_BOTH=1 \
+#       scripts/deploy_transformers.sh google/gemma-2-2b-it google/gemma-2-2b-it
 #   python sft_script.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --no_train
 #   python scripts/check_iteration.py --config configs/gemma2-2b/hotpot_qa_colab_smoke.yaml --show 3
 #
 # train_enabled is false here; pass --no_train anyway as a belt-and-braces
-# guard. Note: T4 has no native bf16, so vLLM serves the model in fp16; keep
-# MEM_UTIL low because the in-process frozen 2B scorer must fit beside the
-# two vLLM endpoints.
+# guard. T4 has no native bf16, so each service loads an independent fp16 model
+# instance. Both services are released before the frozen scorer is loaded.
 seed: 42
 run_name: gemma2-2b-hotpotqa-colab-smoke
 dataset_type: hotpot_qa
