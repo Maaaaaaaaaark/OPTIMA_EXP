@@ -54,6 +54,43 @@ class SFTTrainingConfig:
 
 
 @dataclass
+class DPOTrainingConfig:
+    """Settings for the dual-agent iDPO stage.
+
+    Preference pairs are generated independently for Alice and Bob.  LoRA is
+    merged before saving so the existing inference servers can load every
+    checkpoint as an ordinary Transformers model directory.
+    """
+    learning_rate: float = 5.0e-7
+    num_train_epochs: float = 1.0
+    per_device_train_batch_size: int = 1
+    gradient_accumulation_steps: int = 4
+    max_length: int = 1536
+    max_prompt_length: int = 1280
+    beta: float = 0.1
+    bf16: bool = False
+    fp16: bool = True
+    gradient_checkpointing: bool = True
+    use_lora: bool = True
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    lora_target_modules: List[str] = field(default_factory=lambda: [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ])
+    lr_scheduler_type: str = "cosine"
+    warmup_ratio: float = 0.1
+    logging_steps: int = 1
+    report_to: str = "none"
+    train_ratio: float = 0.9
+    # Author recipes keep a pair only when the preferred child clears a
+    # minimum reward and improves on the rejected child by this much.
+    min_value: float = 0.4
+    min_reward_gap: float = 0.2
+
+
+@dataclass
 class RunConfig:
     seed: int = 42
     run_name: str = ""
@@ -66,6 +103,7 @@ class RunConfig:
     alice: AgentConfig = field(default_factory=AgentConfig)
     bob: AgentConfig = field(default_factory=AgentConfig)
     sft: SFTTrainingConfig = field(default_factory=SFTTrainingConfig)
+    dpo: DPOTrainingConfig = field(default_factory=DPOTrainingConfig)
     sample_count: int = 100        # tasks per iteration
     explore_count: int = 8         # trajectories per task
     max_round: int = 10            # max turns per conversation
@@ -131,6 +169,24 @@ class RunConfig:
     def bob_checkpoint_path(self, i: int) -> str:
         return os.path.join(self.bob.checkpoint_root, f"iteration_{i}")
 
+    def dpo_iteration_dir(self, i: int) -> str:
+        return os.path.join(self.run_dir, f"dpo_iteration_{i}")
+
+    def dpo_raw_path(self, i: int) -> str:
+        return os.path.join(self.dpo_iteration_dir(i), "raw_branches.jsonl")
+
+    def dpo_rewarded_path(self, i: int) -> str:
+        return os.path.join(self.dpo_iteration_dir(i), "rewarded_branches.jsonl")
+
+    def dpo_pairs_path(self, i: int) -> str:
+        return os.path.join(self.dpo_iteration_dir(i), "preference_pairs.jsonl")
+
+    def alice_dpo_dataset_path(self, i: int) -> str:
+        return os.path.join(self.dpo_iteration_dir(i), "alice_dataset")
+
+    def bob_dpo_dataset_path(self, i: int) -> str:
+        return os.path.join(self.dpo_iteration_dir(i), "bob_dataset")
+
     def make_iteration_dirs(self, i: int) -> None:
         for d in (
             self.iteration_dir(i),
@@ -150,7 +206,8 @@ def load_run_config(path: str) -> RunConfig:
     alice = AgentConfig(**raw.pop("alice", {}))
     bob = AgentConfig(**raw.pop("bob", {}))
     sft = SFTTrainingConfig(**raw.pop("sft", {}))
-    cfg = RunConfig(**raw, alice=alice, bob=bob, sft=sft)
+    dpo = DPOTrainingConfig(**raw.pop("dpo", {}))
+    cfg = RunConfig(**raw, alice=alice, bob=bob, sft=sft, dpo=dpo)
     # defaults
     if not cfg.tokenizer_path:
         cfg.tokenizer_path = cfg.base_model_path

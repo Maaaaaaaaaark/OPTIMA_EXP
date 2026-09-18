@@ -389,10 +389,14 @@ def generate_all(
 
     tasks: List[TaskSample] = []
     for i in range(cfg.sample_count):
-        if i in done_tasks:
-            continue
         rng = task_rng(cfg.seed, iteration, i)
         question, answer, context1, context2 = dataloader.sample_once(rng=rng)
+        # ``sample_once`` advances sequential dataset loaders such as
+        # HotpotQA.  Advance it for completed task ids as well, otherwise a
+        # resumed/expanded run would assign dataset row 0 to the first new
+        # task id and silently duplicate earlier questions.
+        if i in done_tasks:
+            continue
         tasks.append(
             TaskSample(
                 task_id=i,

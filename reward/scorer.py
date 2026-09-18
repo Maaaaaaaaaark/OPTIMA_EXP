@@ -99,7 +99,12 @@ class LossScorer:
             shift_labels = inputs[..., 1:].contiguous()
             loss_fct = nn.CrossEntropyLoss(reduction="none", ignore_index=pad_id)
             loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+                # Keep the original cross-entropy reward formula, but compute
+                # it in fp32.  Gemma 2 is loaded in fp16 on T4 GPUs and a
+                # vocabulary-wide fp16 CE can overflow to inf, incorrectly
+                # collapsing lambda2 / max_loss to zero.
+                shift_logits.float().view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
             )
             loss = loss.view(shift_labels.size())
             per = loss.sum(dim=1) / (shift_labels != pad_id).sum(dim=1).clamp(min=1)

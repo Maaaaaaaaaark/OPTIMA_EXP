@@ -197,6 +197,11 @@ def write_rewarded(cfg, tasks):
             f.write(json.dumps(task) + "\n")
 
 
+def read_cleaned(cfg):
+    with open(cfg.cleaned_path(0), "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
 def test_apply_name_penalty_is_minus_ten():
     pytest.importorskip("datasets")
     from train.dataset_build import apply_name_penalty
@@ -243,8 +248,9 @@ def test_select_trajectories_argmax_trim_and_episilon(tmp_path):
     assert rewards == sorted(rewards, reverse=True)  # global sort by reward
     # rank is assigned in descending effective-reward order
     assert [r["rank"] for r in selected] == list(range(7))
-    # all rows were written back with selected/rank markers
-    for task in tasks:
+    # all rows were written to the cleaned file with selected/rank markers
+    cleaned = read_cleaned(cfg)
+    for task in cleaned:
         assert task["results"][0]["selected"] is (task["results"][0]["reward"] >= 4.0)
 
 
@@ -284,4 +290,5 @@ def test_select_trajectories_name_penalty_flips_argmax(tmp_path):
     # effective rewards: -5.0 vs 1.0 -> the clean trajectory wins
     assert len(selected) == 1
     assert selected[0]["reward"] == 1.0
-    assert task["results"][0]["name_penalty"] == -10.0
+    cleaned = read_cleaned(cfg)
+    assert cleaned[0]["results"][0]["name_penalty"] == -10.0
