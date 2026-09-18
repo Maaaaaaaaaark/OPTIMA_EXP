@@ -1,4 +1,4 @@
-from scripts.transformers_openai_server import render_messages
+from scripts.transformers_openai_server import render_messages, trim_at_forbidden
 
 
 class FakeTokenizer:
@@ -35,3 +35,17 @@ def test_prefill_continues_final_assistant_message():
         "tokenize": False,
         "continue_final_message": True,
     }
+
+
+def test_partner_speech_is_removed_from_alice_turn():
+    text, stopped = trim_at_forbidden(
+        "Alice: clue. Bob: simulated reply", ["Bob:"]
+    )
+    assert stopped is True
+    assert text == "Alice: clue."
+
+
+def test_own_prefix_is_not_removed():
+    text, stopped = trim_at_forbidden("Alice: clue", ["Bob:"])
+    assert stopped is False
+    assert text == "Alice: clue"

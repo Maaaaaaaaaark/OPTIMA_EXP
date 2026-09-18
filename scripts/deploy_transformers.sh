@@ -56,6 +56,7 @@ if [ "${1:-}" = "start-bob" ]; then
   CUDA_VISIBLE_DEVICES="${GPU_ID}" nohup "${PYTHON_BIN}" \
     scripts/transformers_openai_server.py \
     --model "${BOB_MODEL}" --served-model-name bob \
+    --forbidden-text "Alice:" \
     --host 127.0.0.1 --port "${BOB_PORT}" --device cuda:0 --dtype "${DTYPE}" \
     > logs/transformers_bob.log 2>&1 &
   echo $! > "${PID_DIR}/bob.pid"
@@ -72,6 +73,7 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 CUDA_VISIBLE_DEVICES="${GPU_ID}" nohup "${PYTHON_BIN}" \
   scripts/transformers_openai_server.py \
   --model "${ALICE_MODEL}" --served-model-name alice \
+  --forbidden-text "Bob:" \
   --host 127.0.0.1 --port "${ALICE_PORT}" --device cuda:0 --dtype "${DTYPE}" \
   > logs/transformers_alice.log 2>&1 &
 echo $! > "${PID_DIR}/alice.pid"
@@ -92,6 +94,7 @@ if [ "${START_BOTH:-0}" = "1" ]; then
   CUDA_VISIBLE_DEVICES="${GPU_ID}" nohup "${PYTHON_BIN}" \
     scripts/transformers_openai_server.py \
     --model "${BOB_MODEL}" --served-model-name bob \
+    --forbidden-text "Alice:" \
     --host 127.0.0.1 --port "${BOB_PORT}" --device cuda:0 --dtype "${DTYPE}" \
     > logs/transformers_bob.log 2>&1 &
   echo $! > "${PID_DIR}/bob.pid"

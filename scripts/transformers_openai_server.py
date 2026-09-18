@@ -16,7 +16,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    StoppingCriteria,
+    StoppingCriteriaList,
+)
 
 
 def _json_bytes(payload: Dict[str, Any]) -> bytes:
@@ -35,9 +40,34 @@ def render_messages(tokenizer, messages: List[Dict[str, str]],
     return tokenizer(text, return_tensors="pt", add_special_tokens=False)
 
 
+def trim_at_forbidden(text: str, forbidden_texts: List[str]):
+    """Remove simulated partner speech from one agent's generated turn."""
+    positions = [text.find(marker) for marker in forbidden_texts]
+    positions = [position for position in positions if position >= 0]
+    if not positions:
+        return text, False
+    return text[:min(positions)].rstrip(), True
+
+
+class StopOnForbiddenText(StoppingCriteria):
+    """Stop as soon as an Agent begins emitting its partner's name prefix."""
+
+    def __init__(self, tokenizer, prompt_tokens: int,
+                 forbidden_texts: List[str]) -> None:
+        self.tokenizer = tokenizer
+        self.prompt_tokens = prompt_tokens
+        self.forbidden_texts = forbidden_texts
+
+    def __call__(self, input_ids, scores, **kwargs):
+        generated = self.tokenizer.decode(
+            input_ids[0, self.prompt_tokens:], skip_special_tokens=True
+        )
+        return any(marker in generated for marker in self.forbidden_texts)
+
+
 class ModelRuntime:
     def __init__(self, model_path: str, served_model_name: str, device: str,
-                 dtype: str) -> None:
+                 dtype: str, forbidden_texts: List[str]) -> None:
         self.model_path = model_path
         self.served_model_name = served_model_name
         self.device = torch.device(device)
@@ -52,6 +82,7 @@ class ModelRuntime:
         if dtype not in dtype_map:
             raise ValueError(f"unsupported dtype {dtype!r}; use half or bfloat16")
         self.dtype = dtype_map[dtype]
+        self.forbidden_texts = forbidden_texts
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -91,6 +122,12 @@ class ModelRuntime:
             "use_cache": True,
             "pad_token_id": self.tokenizer.pad_token_id,
         }
+        if self.forbidden_texts:
+            generation["stopping_criteria"] = StoppingCriteriaList([
+                StopOnForbiddenText(
+                    self.tokenizer, prompt_tokens, self.forbidden_texts
+                )
+            ])
         if temperature > 0:
             generation.update(do_sample=True, temperature=temperature)
             if "top_p" in request:
@@ -108,7 +145,18 @@ class ModelRuntime:
         new_ids = output[0, prompt_tokens:]
         completion_tokens = int(new_ids.numel())
         content = self.tokenizer.decode(new_ids, skip_special_tokens=True)
-        finish_reason = "length" if completion_tokens >= max_new_tokens else "stop"
+        content, boundary_stop = trim_at_forbidden(
+            content, self.forbidden_texts
+        )
+        if boundary_stop:
+            completion_tokens = len(self.tokenizer.encode(
+                content, add_special_tokens=False
+            ))
+        finish_reason = (
+            "length"
+            if completion_tokens >= max_new_tokens and not boundary_stop
+            else "stop"
+        )
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex}",
             "object": "chat.completion",
@@ -177,8 +225,15 @@ def main() -> None:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--dtype", default="half")
+    parser.add_argument("--forbidden-text", action="append", default=[])
     args = parser.parse_args()
-    runtime = ModelRuntime(args.model, args.served_model_name, args.device, args.dtype)
+    runtime = ModelRuntime(
+        args.model,
+        args.served_model_name,
+        args.device,
+        args.dtype,
+        args.forbidden_text,
+    )
     server = ThreadingHTTPServer((args.host, args.port), make_handler(runtime))
     print(
         f"[ready] {args.served_model_name}: {args.model} on {args.device} -> "
