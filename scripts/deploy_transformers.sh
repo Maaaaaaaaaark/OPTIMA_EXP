@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy independent Alice/Bob Transformers servers for Gemma 2 on a T4.
+# Deploy independent Alice/Bob Transformers servers for Gemma 2 on one GPU.
 set -u
 
 ALICE_PORT="${ALICE_PORT:-8100}"

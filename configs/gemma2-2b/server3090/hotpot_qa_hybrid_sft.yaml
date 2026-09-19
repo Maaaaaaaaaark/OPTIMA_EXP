@@ -1,25 +1,23 @@
 seed: 42
-run_name: gemma2-2b-hotpotqa-3090-isft
+run_name: gemma2-2b-hotpotqa-3090-hybrid-sft
 dataset_type: hotpot_qa
 dataset_path: hotpotqa/hotpot_qa
 dataset_split: train
 base_model_path: google/gemma-2-2b-it
 reward_model_path: google/gemma-2-2b-it
 merge_system_into_user: true
-
 alice:
   name: Alice
   served_model_name: alice
   url: http://127.0.0.1:8100/v1/chat/completions
-  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-isft/alice
+  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/alice/sft
 bob:
   name: Bob
   served_model_name: bob
   url: http://127.0.0.1:8101/v1/chat/completions
-  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-isft/bob
-
+  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/bob/sft
 sample_count: 50            # one-GPU comparison scale; author recipe uses 10000
-explore_count: 10           # author HotpotQA recipe
+explore_count: 10
 max_round: 10
 max_tokens_per_turn: 2000
 iteration_times: 2
@@ -41,10 +39,9 @@ scorer_batch_size: 2
 scorer_device: cuda:0
 health_check_timeout: 300
 release_vllm_before_scoring: true
-
 sft:
   learning_rate: 2.0e-5
-  num_train_epochs: 3.0
+  num_train_epochs: 2.0
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 4
   max_seq_length: 2048

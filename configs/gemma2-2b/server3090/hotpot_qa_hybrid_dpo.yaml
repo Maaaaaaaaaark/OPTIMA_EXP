@@ -1,53 +1,59 @@
 seed: 42
-run_name: gemma2-2b-hotpotqa-3090-isft
+run_name: gemma2-2b-hotpotqa-3090-hybrid
 dataset_type: hotpot_qa
 dataset_path: hotpotqa/hotpot_qa
 dataset_split: train
 base_model_path: google/gemma-2-2b-it
 reward_model_path: google/gemma-2-2b-it
 merge_system_into_user: true
-
 alice:
   name: Alice
   served_model_name: alice
   url: http://127.0.0.1:8100/v1/chat/completions
-  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-isft/alice
+  initial_model_path: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/alice/sft/iteration_0
+  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/alice/dpo
 bob:
   name: Bob
   served_model_name: bob
   url: http://127.0.0.1:8101/v1/chat/completions
-  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-isft/bob
-
-sample_count: 50            # one-GPU comparison scale; author recipe uses 10000
-explore_count: 10           # author HotpotQA recipe
+  initial_model_path: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/bob/sft/iteration_0
+  checkpoint_root: checkpoints/gemma2-2b-hotpotqa-3090-hybrid/bob/dpo
+sample_count: 50            # one-GPU comparison scale; author MCTS uses 12000
+explore_count: 8
 max_round: 10
 max_tokens_per_turn: 2000
-iteration_times: 2
-episilon: 0.5
+iteration_times: 1
 lambda1: -0.6
 lambda2: 1.0
 cal_ppl: true
 from_initial: false
 prompt_pool_path: ""
 require_name_prefix: true
-temperature_iter0: 0.3
 temperature: 0.7
-selection_trim_low: 0.0
-selection_trim_high: 0.7
-train_enabled: true
 runs_root: runs
-thread_count: 2
-scorer_batch_size: 2
+thread_count: 1
+scorer_batch_size: 1
 scorer_device: cuda:0
 health_check_timeout: 300
 release_vllm_before_scoring: true
-
-sft:
-  learning_rate: 2.0e-5
-  num_train_epochs: 3.0
+dpo:
+  author_mcts: true
+  search_iterations: 8
+  rollouts_per_expansion: 3
+  candidate_top_k: 10
+  pair_keep_ratio: 0.5
+  token_budget_probe_count: 100
+  token_budget_percentile: 0.80
+  min_value: 0.4
+  min_reward_gap: 0.2
+  rpo_alpha: null
+  beta: 0.1
+  learning_rate: 5.0e-7
+  num_train_epochs: 1.0
   per_device_train_batch_size: 1
-  gradient_accumulation_steps: 4
-  max_seq_length: 2048
+  gradient_accumulation_steps: 8
+  max_length: 512
+  max_prompt_length: 1024
   bf16: false
   fp16: true
   gradient_checkpointing: true
@@ -60,7 +66,4 @@ sft:
   warmup_ratio: 0.1
   logging_steps: 1
   report_to: none
-  response_template: "<start_of_turn>model\n"
-  instruction_template: "<start_of_turn>user\n"
-  train_ratio: 0.98
-  filter_long_samples: true
+  train_ratio: 0.9

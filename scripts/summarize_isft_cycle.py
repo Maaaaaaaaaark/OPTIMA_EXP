@@ -1,6 +1,7 @@
 """Create JSON/Markdown summaries for a two-stage iSFT cycle."""
 from argparse import ArgumentParser
 from collections import Counter
+import csv
 import json
 import os
 import re
@@ -81,9 +82,33 @@ def main():
     out_dir = os.path.join(cfg.run_dir, "comparison")
     os.makedirs(out_dir, exist_ok=True)
     json_path = os.path.join(out_dir, "isft_cycle_summary.json")
+    csv_path = os.path.join(out_dir, "isft_cycle_summary.csv")
     md_path = os.path.join(out_dir, "isft_cycle_summary.md")
     with open(json_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, ensure_ascii=False)
+
+    csv_stages = (
+        ("Generation iteration 0", report["isft_iteration_0"]),
+        ("Generation iteration 1", report["isft_iteration_1"]),
+        ("Validation baseline", report["validation_baseline"]),
+        ("Validation post-iSFT0", report["validation_post_isft0"]),
+    )
+    with open(csv_path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "stage", "trajectories", "mean_correct", "fully_correct",
+            "mean_tokens", "parsed_answer", "agreement",
+        ])
+        for label, values in csv_stages:
+            writer.writerow([
+                label,
+                values["trajectories"],
+                values["mean_correct_score"],
+                values["fully_correct"],
+                values["mean_tokens"],
+                values["parsed_answer"],
+                values["termination"].get("agreement", 0),
+            ])
 
     base = report["validation_baseline"]
     post = report["validation_post_isft0"]
@@ -121,7 +146,7 @@ def main():
     lines.extend(
         [
             "",
-            "> Iteration 0 and iteration 1 use different training questions. The fixed validation table is the causal before/after comparison.",
+            "> Iteration 0 and iteration 1 use different training questions. The fixed validation table is the causal before/after comparison. This run uses the 50-task one-GPU comparison scale.",
             "",
         ]
     )
@@ -129,6 +154,7 @@ def main():
         handle.write("\n".join(lines))
     print("\n".join(lines))
     print(f"JSON: {json_path}")
+    print(f"CSV: {csv_path}")
     print(f"Markdown: {md_path}")
 
 

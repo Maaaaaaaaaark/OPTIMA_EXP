@@ -88,6 +88,16 @@ class DPOTrainingConfig:
     # minimum reward and improves on the rejected child by this much.
     min_value: float = 0.4
     min_reward_gap: float = 0.2
+    # Author-faithful standalone iDPO search/training settings.  Hybrid uses
+    # the same MCTS settings but sets rpo_alpha to None (standard DPO).
+    author_mcts: bool = False
+    search_iterations: int = 8
+    rollouts_per_expansion: int = 3
+    candidate_top_k: int = 10
+    pair_keep_ratio: float = 0.5
+    token_budget_probe_count: int = 100
+    token_budget_percentile: float = 0.85
+    rpo_alpha: Optional[float] = None
 
 
 @dataclass

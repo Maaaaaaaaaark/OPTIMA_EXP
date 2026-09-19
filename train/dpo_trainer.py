@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument("--max_length", type=int, default=1536)
     parser.add_argument("--max_prompt_length", type=int, default=1280)
     parser.add_argument("--beta", type=float, default=0.1)
+    parser.add_argument("--rpo_alpha", type=float, default=None)
     parser.add_argument("--bf16", action="store_true")
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--gradient_checkpointing", action="store_true")
@@ -104,6 +105,10 @@ def main():
         remove_unused_columns=False,
         logging_dir=os.path.join(args.output_dir, "logs"),
     )
+    # TRL's DPOTrainer reads this optional attribute.  The author's standalone
+    # iDPO sets it to 1.0 (RPO = DPO + NLL); hybrid deliberately leaves it off.
+    if args.rpo_alpha is not None:
+        training_args.rpo_alpha = args.rpo_alpha
 
     # With PEFT and ref_model=None, TRL evaluates the frozen reference by
     # disabling the adapter.  This avoids holding a second 2B model on T4.

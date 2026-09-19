@@ -173,6 +173,9 @@ def build_speaker_datasets(
             )
             if row is not None:
                 rows.append(row)
+        # The author pipeline shuffles selected SFT rows before its 98/2
+        # split. Use a local deterministic RNG so resume order is stable.
+        random.Random(f"{cfg.seed}:{iteration}:{speaker}:sft-split").shuffle(rows)
         # Preserve a typed empty dataset when no trajectory passes epsilon.
         # Dataset.from_list([]) has no schema and cannot be saved to disk.
         dataset = (Dataset.from_list(rows) if rows

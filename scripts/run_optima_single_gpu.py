@@ -1,4 +1,4 @@
-"""Run the complete iSFT -> iDPO experiment on one selected GPU."""
+"""Run one-round iSFT, iDPO and iSFT-DPO experiments on one selected GPU."""
 from argparse import ArgumentParser
 import os
 import subprocess
@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--eval-count", type=int, default=50)
     parser.add_argument("--reset", action="store_true")
     parser.add_argument(
-        "--stage", choices=("all", "isft", "idpo"), default="all"
+        "--stage", choices=("all", "isft", "idpo", "hybrid"), default="all"
     )
     args = parser.parse_args()
     common = [
@@ -37,6 +37,8 @@ def main():
         stem = "hotpot_qa" if task == "information" else "arc"
         isft_config = f"configs/gemma2-2b/server3090/{stem}_isft.yaml"
         idpo_config = f"configs/gemma2-2b/server3090/{stem}_idpo.yaml"
+        hybrid_sft_config = f"configs/gemma2-2b/server3090/{stem}_hybrid_sft.yaml"
+        hybrid_dpo_config = f"configs/gemma2-2b/server3090/{stem}_hybrid_dpo.yaml"
         print(f"[optima] starting {task}: stage={args.stage}", flush=True)
         if args.stage in ("all", "isft"):
             subprocess.run(
@@ -49,6 +51,29 @@ def main():
             subprocess.run(
                 [sys.executable, "scripts/run_idpo_cycle_single_gpu.py",
                  "--isft-config", isft_config, "--idpo-config", idpo_config, *common],
+                check=True,
+                env=env,
+            )
+        if args.stage in ("all", "hybrid"):
+            baseline_run = (
+                "gemma2-2b-hotpotqa-3090-isft-baseline-eval"
+                if task == "information"
+                else "gemma2-2b-arc-3090-isft-baseline-eval"
+            ) + str(args.eval_count)
+            subprocess.run(
+                [
+                    sys.executable, "scripts/run_hybrid_cycle_single_gpu.py",
+                    "--sft-config", hybrid_sft_config,
+                    "--dpo-config", hybrid_dpo_config,
+                    "--baseline-run", baseline_run,
+                    *common,
+                ],
+                check=True,
+                env=env,
+            )
+        if args.stage == "all":
+            subprocess.run(
+                [sys.executable, "scripts/summarize_all_methods.py", "--task", task],
                 check=True,
                 env=env,
             )

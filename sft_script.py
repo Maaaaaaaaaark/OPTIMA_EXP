@@ -80,7 +80,12 @@ def main():
 
     with exclusive_run_lock(cfg.runs_root, cfg.run_name):
         if args.overwrite:
-            for root in (cfg.run_dir, os.path.join("checkpoints", cfg.run_name)):
+            targets = {
+                cfg.run_dir,
+                cfg.alice.checkpoint_root,
+                cfg.bob.checkpoint_root,
+            }
+            for root in sorted(targets):
                 if os.path.exists(root):
                     print(f"[overwrite] removing {root}")
                     shutil.rmtree(root)

@@ -33,7 +33,7 @@ def make_eval_config(raw, path, run_name, sample_count, alice_model, bob_model):
 
 
 def require_checkpoint(path, label):
-    if not os.path.exists(os.path.join(path, "config.json")):
+    if path.startswith("checkpoints/") and not os.path.exists(os.path.join(path, "config.json")):
         raise RuntimeError(f"missing {label} checkpoint: {path}")
 
 
@@ -52,8 +52,8 @@ def main():
     cfg = load_run_config(args.idpo_config)
     isft_cfg = load_run_config(args.isft_config)
     for path, label in (
-        (cfg.alice.initial_model_path, "Alice iSFT"),
-        (cfg.bob.initial_model_path, "Bob iSFT"),
+        (cfg.alice.initial_model_path, "Alice initial model"),
+        (cfg.bob.initial_model_path, "Bob initial model"),
     ):
         require_checkpoint(path, label)
     free_disk = shutil.disk_usage(PROJECT_ROOT).free // (1024**3)
@@ -82,7 +82,7 @@ def main():
 
     wait_for_gpu(args.gpu_id, args.min_free_mib, args.poll_seconds)
     try:
-        print("[idpo-orchestrator] phase 1/5: branch generation", flush=True)
+        print("[idpo-orchestrator] phase 1/7: author MCTS iteration 0", flush=True)
         deploy(
             PROJECT_ROOT,
             python_bin,
@@ -99,7 +99,7 @@ def main():
             command.append("--overwrite")
         run(command, env)
 
-        print("[idpo-orchestrator] phase 2/5: reward and preference pairs", flush=True)
+        print("[idpo-orchestrator] phase 2/7: iteration-0 preference datasets", flush=True)
         run(
             [
                 python_bin, "idpo_script.py", "--config", args.idpo_config,
@@ -113,7 +113,7 @@ def main():
             env,
         )
 
-        print("[idpo-orchestrator] phase 3/5: independent Alice/Bob DPO training", flush=True)
+        print("[idpo-orchestrator] phase 3/7: independent Alice/Bob RPO training", flush=True)
         run(
             [
                 python_bin, "idpo_script.py", "--config", args.idpo_config,
@@ -124,7 +124,39 @@ def main():
         require_checkpoint(cfg.alice_checkpoint_path(0), "Alice iDPO")
         require_checkpoint(cfg.bob_checkpoint_path(0), "Bob iDPO")
 
-        print("[idpo-orchestrator] phase 4/5: fixed post-iDPO evaluation", flush=True)
+        print("[idpo-orchestrator] phase 4/7: author MCTS iteration 1 (no training)", flush=True)
+        wait_for_gpu(args.gpu_id, args.min_free_mib, args.poll_seconds)
+        deploy(
+            PROJECT_ROOT,
+            python_bin,
+            args.gpu_id,
+            cfg.alice_checkpoint_path(0),
+            cfg.bob_checkpoint_path(0),
+            env,
+        )
+        run(
+            [
+                python_bin, "idpo_script.py", "--config", args.idpo_config,
+                "--iteration", "1", "--stage", "generate",
+            ],
+            env,
+        )
+
+        print("[idpo-orchestrator] phase 5/7: iteration-1 scoring and audit", flush=True)
+        run(
+            [
+                python_bin, "idpo_script.py", "--config", args.idpo_config,
+                "--iteration", "1", "--stage", "score",
+            ],
+            env,
+        )
+        run(
+            [python_bin, "scripts/check_idpo.py", "--config", args.idpo_config,
+             "--iteration", "1", "--show", "3"],
+            env,
+        )
+
+        print("[idpo-orchestrator] phase 6/7: fixed post-iDPO evaluation", flush=True)
         wait_for_gpu(args.gpu_id, args.min_free_mib, args.poll_seconds)
         deploy(
             PROJECT_ROOT,
@@ -142,7 +174,7 @@ def main():
             command.append("--overwrite")
         run(command, env)
 
-        print("[idpo-orchestrator] phase 5/5: three-way report", flush=True)
+        print("[idpo-orchestrator] phase 7/7: English reports", flush=True)
         run(
             [
                 python_bin, "scripts/summarize_idpo_cycle.py",
@@ -160,4 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

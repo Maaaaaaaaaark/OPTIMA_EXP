@@ -39,7 +39,13 @@ def main():
     print(f"iDPO audit — {cfg.run_name} / iteration {args.iteration}")
     print("=" * 74)
     print(f"tasks: {len(rows)} / expected {cfg.sample_count}")
-    print(f"states: {len(states)} (Alice root + Bob-after-Alice expected per task)")
+    if cfg.dpo.author_mcts:
+        print(
+            f"search states: {len(states)} / expected "
+            f"{len(rows) * cfg.dpo.search_iterations}"
+        )
+    else:
+        print(f"states: {len(states)} (bounded compatibility generator)")
     print(f"rollout branches: {len(branches)}")
     print(f"terminations: {dict(Counter(b.get('termination_reason') for b in branches))}")
     print(f"preference pairs: {len(pairs)} / {dict(Counter(p.get('speaker') for p in pairs))}")

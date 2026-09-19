@@ -6,6 +6,7 @@ import sys
 
 from train.dpo_generate import (
     build_dpo_datasets,
+    generate_author_mcts,
     generate_dpo_branches,
     score_dpo_branches,
 )
@@ -63,6 +64,8 @@ def _train_one(cfg: RunConfig, model_path: str, dataset_path: str, output_dir: s
         cmd.append("--fp16")
     if dpo.gradient_checkpointing:
         cmd.append("--gradient_checkpointing")
+    if dpo.rpo_alpha is not None:
+        cmd.extend(["--rpo_alpha", str(dpo.rpo_alpha)])
     if dpo.use_lora:
         cmd.extend(
             [
@@ -95,9 +98,15 @@ def run_idpo(cfg: RunConfig, iteration: int, stage: str = "all") -> None:
             cfg.bob.url, cfg.bob.served_model_name, cfg.health_check_timeout
         )
         loader = build_dataloader(cfg)
-        for _ in range(iteration * cfg.sample_count):
+        per_iteration = cfg.sample_count
+        if cfg.dpo.author_mcts:
+            per_iteration += cfg.dpo.token_budget_probe_count
+        for _ in range(iteration * per_iteration):
             loader.sample_once()
-        generate_dpo_branches(cfg, loader, iteration)
+        if cfg.dpo.author_mcts:
+            generate_author_mcts(cfg, loader, iteration)
+        else:
+            generate_dpo_branches(cfg, loader, iteration)
         if stage == "generate":
             print("[idpo] generation complete; inference servers remain running")
             return
@@ -105,8 +114,11 @@ def run_idpo(cfg: RunConfig, iteration: int, stage: str = "all") -> None:
     if stage in ("all", "score"):
         if cfg.release_vllm_before_scoring:
             release_vllm_processes()
-        print(f"[idpo-reward] loading frozen model from {cfg.reward_model_path}")
-        score_dpo_branches(cfg, iteration)
+        if cfg.dpo.author_mcts:
+            print("[idpo-reward] MCTS rollouts were scored online for value backpropagation")
+        else:
+            print(f"[idpo-reward] loading frozen model from {cfg.reward_model_path}")
+            score_dpo_branches(cfg, iteration)
         from transformers import AutoTokenizer
 
         tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_path)

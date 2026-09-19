@@ -1,34 +1,32 @@
 seed: 42
-run_name: gemma2-2b-arc-3090-idpo
+run_name: gemma2-2b-arc-3090-hybrid
 dataset_type: arc
 dataset_path: allenai/ai2_arc
 dataset_split: train
 base_model_path: google/gemma-2-2b-it
 reward_model_path: google/gemma-2-2b-it
 merge_system_into_user: true
-
 alice:
   name: Alice
   served_model_name: alice
   url: http://127.0.0.1:8100/v1/chat/completions
-  initial_model_path: checkpoints/gemma2-2b-arc-3090-isft/alice/iteration_0
-  checkpoint_root: checkpoints/gemma2-2b-arc-3090-idpo/alice
+  initial_model_path: checkpoints/gemma2-2b-arc-3090-hybrid/alice/sft/iteration_0
+  checkpoint_root: checkpoints/gemma2-2b-arc-3090-hybrid/alice/dpo
 bob:
   name: Bob
   served_model_name: bob
   url: http://127.0.0.1:8101/v1/chat/completions
-  initial_model_path: checkpoints/gemma2-2b-arc-3090-isft/bob/iteration_0
-  checkpoint_root: checkpoints/gemma2-2b-arc-3090-idpo/bob
-
+  initial_model_path: checkpoints/gemma2-2b-arc-3090-hybrid/bob/sft/iteration_0
+  checkpoint_root: checkpoints/gemma2-2b-arc-3090-hybrid/bob/dpo
 sample_count: 50            # one-GPU comparison scale; author MCTS uses 10000
 explore_count: 8
 max_round: 10
 max_tokens_per_turn: 2000
-iteration_times: 2
-lambda1: -0.4
-lambda2: 0.7
+iteration_times: 1
+lambda1: -0.5
+lambda2: 0.6
 cal_ppl: true
-from_initial: false
+from_initial: true
 prompt_pool_path: utils/prompts_arc_first.jsonl
 require_name_prefix: true
 temperature: 0.7
@@ -38,7 +36,6 @@ scorer_batch_size: 1
 scorer_device: cuda:0
 health_check_timeout: 300
 release_vllm_before_scoring: true
-
 dpo:
   author_mcts: true
   search_iterations: 8
@@ -46,11 +43,11 @@ dpo:
   candidate_top_k: 10
   pair_keep_ratio: 0.5
   token_budget_probe_count: 100
-  token_budget_percentile: 0.85
+  token_budget_percentile: 0.80
   min_value: 0.45
   min_reward_gap: 0.2
-  rpo_alpha: 1.0
-  beta: 0.2
+  rpo_alpha: null
+  beta: 0.1
   learning_rate: 5.0e-7
   num_train_epochs: 1.0
   per_device_train_batch_size: 1
