@@ -130,10 +130,12 @@ def _rollout(
     turns = [Turn(**turn) for turn in prefix]
     conversation = [turn.content for turn in turns]
     final_answer = ""
+    final_answer_speaker: Optional[str] = None
     for turn in turns:
         parsed = turn.parsed_answer or _parse_answer(turn, task.data_type)
         if parsed not in (None, ""):
             final_answer = parsed
+            final_answer_speaker = turn.speaker
 
     termination = "max_round"
     candidate = ""
@@ -157,10 +159,15 @@ def _rollout(
                 candidate = turn.content
         turn.parsed_answer = _parse_answer(turn, task.data_type)
         if turn.parsed_answer not in (None, ""):
-            if turn.parsed_answer == final_answer:
+            if (
+                turn.parsed_answer == final_answer
+                and final_answer_speaker is not None
+                and turn.speaker != final_answer_speaker
+            ):
                 termination = "agreement"
                 break
             final_answer = turn.parsed_answer
+            final_answer_speaker = turn.speaker
         current = 1 - current
         agents[current].add_memory(llmMessage(role="user", content=turn.content))
 

@@ -1,0 +1,51 @@
+seed: 42
+run_name: gemma2-2b-arc-post-isft-fixed-eval50
+dataset_type: arc
+dataset_path: allenai/ai2_arc
+dataset_split: validation
+base_model_path: google/gemma-2-2b-it
+reward_model_path: google/gemma-2-2b-it
+merge_system_into_user: true
+
+alice:
+  name: Alice
+  served_model_name: alice
+  url: http://127.0.0.1:8100/v1/chat/completions
+  initial_model_path: checkpoints/gemma2-2b-arc-colab-medium/alice/iteration_0
+bob:
+  name: Bob
+  served_model_name: bob
+  url: http://127.0.0.1:8101/v1/chat/completions
+  initial_model_path: checkpoints/gemma2-2b-arc-colab-medium/bob/iteration_0
+
+sample_count: 50
+explore_count: 1
+max_round: 8
+max_tokens_per_turn: 256
+iteration_times: 1
+episilon: 0.6
+lambda1: -0.5
+lambda2: 0.6
+cal_ppl: true
+from_initial: true
+prompt_pool_path: utils/prompts_arc_first.jsonl
+require_name_prefix: true
+temperature_iter0: 0.0
+temperature: 0.0
+selection_trim_low: 0.0
+selection_trim_high: 0.7
+train_enabled: false
+runs_root: runs
+thread_count: 2
+scorer_batch_size: 1
+scorer_device: cuda:0
+health_check_timeout: 300
+release_vllm_before_scoring: true
+
+sft:
+  bf16: false
+  fp16: true
+  use_lora: true
+  max_seq_length: 1536
+  response_template: "<start_of_turn>model\n"
+  instruction_template: "<start_of_turn>user\n"

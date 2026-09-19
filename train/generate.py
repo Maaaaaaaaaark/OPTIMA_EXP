@@ -273,6 +273,7 @@ def generate_trajectory(
     current = 0
     now_round = 0
     final_answer = ""
+    final_answer_speaker: Optional[str] = None
     while now_round < cfg.max_round:
         agent = agent_list[current]
         turn = agent.step()
@@ -293,10 +294,18 @@ def generate_trajectory(
             traj.conversation[-1] = turn.content
         turn.parsed_answer = _parse_answer(turn, task.data_type)
         if turn.parsed_answer not in (None, ""):
-            if turn.parsed_answer == final_answer:
+            # Agreement requires confirmation by the *other* agent.  Without
+            # the speaker check, Alice repeating her own answer after Bob says
+            # only "Correct"/"Agreed" is incorrectly counted as consensus.
+            if (
+                turn.parsed_answer == final_answer
+                and final_answer_speaker is not None
+                and turn.speaker != final_answer_speaker
+            ):
                 traj.termination_reason = "agreement"
                 break
             final_answer = turn.parsed_answer
+            final_answer_speaker = turn.speaker
 
         current = (current + 1) % 2
         # partner stores this turn as a "user" message (speaker-aware memory)

@@ -103,6 +103,22 @@ def test_max_round_still_bounds_conversation(monkeypatch):
     assert speakers == ["Alice", "Bob"] * (cfg.max_round // 2)
 
 
+def test_same_speaker_repetition_is_not_agreement(monkeypatch):
+    cfg = load_run_config(GEMMA_SMOKE_CONFIG)
+    cfg.max_round = 4
+    monkeypatch.setattr(
+        "agent.agent.requests.post",
+        make_fake_post(
+            script_alice=["Alice: <A>Team A</A>"] * 4,
+            script_bob=["Bob: Correct.", "Bob: Agreed."],
+            captured=[],
+        ),
+    )
+    traj = generate_trajectory(cfg, make_task(), traj_id=0, iteration=0)
+    assert traj.termination_reason == "max_round"
+    assert [turn.speaker for turn in traj.turns] == ["Alice", "Bob", "Alice", "Bob"]
+
+
 def test_prompts_and_private_contexts_differ(monkeypatch):
     cfg = load_run_config(GEMMA_SMOKE_CONFIG)
     monkeypatch.setattr(

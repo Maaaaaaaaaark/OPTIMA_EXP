@@ -84,14 +84,46 @@ def release_vllm_processes() -> None:
         ) from exc
 
     parents = []
-    for process in psutil.process_iter(["pid", "cmdline"]):
+    # The Transformers launcher records exactly the two workers owned by this
+    # run.  Prefer those PIDs on a shared multi-GPU server so another user's
+    # inference process is never selected merely because its command matches.
+    pid_dir = os.environ.get(
+        "OPTIMA_INFERENCE_PID_DIR", os.path.join("logs", "transformers_pids")
+    )
+    pid_files = [os.path.join(pid_dir, name) for name in ("alice.pid", "bob.pid")]
+    owned_pids = []
+    for pid_file in pid_files:
         try:
-            command = " ".join(process.info.get("cmdline") or [])
-            if ("vllm serve" in command or
-                    "scripts/transformers_openai_server.py" in command):
-                parents.append(process)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            with open(pid_file, encoding="utf-8") as handle:
+                owned_pids.append(int(handle.read().strip()))
+        except (FileNotFoundError, ValueError):
+            pass
+
+    if owned_pids:
+        for pid in owned_pids:
+            try:
+                process = psutil.Process(pid)
+                command = " ".join(process.cmdline())
+                if "scripts/transformers_openai_server.py" in command:
+                    parents.append(process)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    else:
+        # Compatibility fallback for the legacy vLLM launcher, which does not
+        # create PID files.  Only processes owned by the current Unix user are
+        # eligible on shared machines.
+        current_uid = os.getuid() if hasattr(os, "getuid") else None
+        for process in psutil.process_iter(["pid", "cmdline", "uids"]):
+            try:
+                uids = process.info.get("uids")
+                if current_uid is not None and uids is not None and uids.real != current_uid:
+                    continue
+                command = " ".join(process.info.get("cmdline") or [])
+                if ("vllm serve" in command or
+                        "scripts/transformers_openai_server.py" in command):
+                    parents.append(process)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
 
     targets = []
     for parent in parents:
