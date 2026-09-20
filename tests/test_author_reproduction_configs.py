@@ -58,3 +58,12 @@ def test_reward_coefficients_match_author_recipes():
     arc = load("arc_idpo.yaml")
     assert (hotpot.lambda1, hotpot.lambda2, hotpot.dpo.beta) == (-0.6, 1.0, 0.1)
     assert (arc.lambda1, arc.lambda2, arc.dpo.beta) == (-0.4, 0.7, 0.2)
+
+
+def test_dpo_trainer_uses_trl_dpo_config_for_dpo_specific_options():
+    source = (ROOT / "train" / "dpo_trainer.py").read_text(encoding="utf-8")
+    assert "from trl import DPOConfig, DPOTrainer" in source
+    assert "training_args = DPOConfig(" in source
+    assert "training_args = TrainingArguments(" not in source
+    for option in ("beta", "max_length", "max_prompt_length", "rpo_alpha"):
+        assert f"{option}=args.{option}" in source

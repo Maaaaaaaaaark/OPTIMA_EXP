@@ -40,8 +40,8 @@ def parse_args():
 
 def main():
     from datasets import load_from_disk
-    from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-    from trl import DPOTrainer
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from trl import DPOConfig, DPOTrainer
 
     args = parse_args()
     if args.bf16 and args.fp16:
@@ -85,7 +85,12 @@ def main():
             task_type="CAUSAL_LM",
         )
 
-    training_args = TrainingArguments(
+    # TRL 0.10.x requires DPO-specific options to live on DPOConfig.  Passing
+    # a plain transformers.TrainingArguments object reaches into attributes
+    # such as model_init_kwargs and fails before training starts.  Keeping
+    # beta/length/RPO settings here also avoids TRL's deprecated constructor
+    # compatibility path without changing the optimization objective.
+    training_args = DPOConfig(
         output_dir=args.output_dir,
         seed=args.seed,
         learning_rate=args.learning_rate,
@@ -104,11 +109,11 @@ def main():
         evaluation_strategy="no",
         remove_unused_columns=False,
         logging_dir=os.path.join(args.output_dir, "logs"),
+        beta=args.beta,
+        max_length=args.max_length,
+        max_prompt_length=args.max_prompt_length,
+        rpo_alpha=args.rpo_alpha,
     )
-    # TRL's DPOTrainer reads this optional attribute.  The author's standalone
-    # iDPO sets it to 1.0 (RPO = DPO + NLL); hybrid deliberately leaves it off.
-    if args.rpo_alpha is not None:
-        training_args.rpo_alpha = args.rpo_alpha
 
     # With PEFT and ref_model=None, TRL evaluates the frozen reference by
     # disabling the adapter.  This avoids holding a second 2B model on T4.
@@ -116,12 +121,9 @@ def main():
         model=model,
         ref_model=None,
         args=training_args,
-        beta=args.beta,
         train_dataset=train,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        max_length=args.max_length,
-        max_prompt_length=args.max_prompt_length,
         peft_config=peft_config,
     )
     trainer.train()
